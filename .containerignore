@@ -1,0 +1,16 @@
+.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.egg-info
+**/.next
+backend/uploads
+**/.env
+**/.env.local
+**/.env.prod
+**/AGENTS.md
+**/CLAUDE.md
+frontend/next-env.d.ts
+deploy/certbot

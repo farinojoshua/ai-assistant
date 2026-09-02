@@ -1,6 +1,7 @@
-# Production stack. Run from the repo root:
+# Production stack. Works with either engine, from the repo root:
+#   podman compose -p ai-assistant -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
 #   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
-name: ai-assistant
+# (deploy/setup.sh picks the right one for you.)
 
 services:
   app_db:

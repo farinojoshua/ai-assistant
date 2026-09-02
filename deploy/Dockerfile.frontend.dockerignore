@@ -1,8 +1,0 @@
-**/node_modules
-frontend/.next
-frontend/.env.local
-frontend/AGENTS.md
-frontend/CLAUDE.md
-frontend/next-env.d.ts
-backend
-.git
