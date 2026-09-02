@@ -59,6 +59,9 @@ if [ ! -f "$ENV_FILE" ]; then
   sed -i "s|^SEED_ADMIN_PASSWORD=.*|SEED_ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -d '/+=')|" "$ENV_FILE"
   IP="$(curl -fsS4 ifconfig.me 2>/dev/null || echo localhost)"
   sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=[\"http://$IP\"]|" "$ENV_FILE"
+  # let the invoking (non-root) user edit it
+  [ -n "${SUDO_USER:-}" ] && chown "$SUDO_USER":"$SUDO_USER" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
   echo
   echo "  >>> EDIT $ENV_FILE — set OLLAMA_API_KEY and SEED_ADMIN_EMAIL — then re-run this script."
   echo
