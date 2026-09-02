@@ -10,11 +10,13 @@ python -m venv .venv
 cp .env.example .env            # edit secrets
 
 podman compose up -d            # app_db :5432, company_db :5433
-# one-time: create the test database
+# one-time: create the test databases
 podman exec backend-app_db-1 psql -U app -c "CREATE DATABASE app_test;"
+podman exec backend-company_db-1 psql -U company -c "CREATE DATABASE company_test;"
 
 ./.venv/Scripts/alembic.exe upgrade head
 ./.venv/Scripts/python.exe scripts/seed_user.py --email admin@demo.test --password rahasia123
+cat scripts/seed_company_db.sql | podman exec -i backend-company_db-1 psql -U company -q
 ```
 
 ## Run

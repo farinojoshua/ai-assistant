@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import pytest_asyncio
 
@@ -14,6 +15,13 @@ TEST_APP_DB_URL = os.environ.get(
     "TEST_APP_DATABASE_URL",
     "postgresql+psycopg://app:app@localhost:5432/app_test",
 )
+TEST_COMPANY_DB_URL = os.environ.get(
+    "TEST_COMPANY_DATABASE_URL",
+    "postgresql+psycopg://company:company@localhost:5433/company_test",
+)
+_SEED_SQL = (
+    Path(__file__).resolve().parent.parent / "scripts" / "seed_company_db.sql"
+).read_text()
 
 from app.db.models import Base  # noqa: E402
 
@@ -39,6 +47,22 @@ async def db(_engine) -> AsyncIterator[AsyncSession]:
             await conn.exec_driver_sql(
                 f'TRUNCATE TABLE "{table.name}" CASCADE'
             )
+
+
+@pytest_asyncio.fixture(scope="session")
+async def _company_engine():
+    engine = create_async_engine(TEST_COMPANY_DB_URL, poolclass=None)
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql(_SEED_SQL)
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def company_gateway(_company_engine):
+    from app.db.company_db import CompanyDbGateway
+
+    return CompanyDbGateway(_company_engine)
 
 
 @pytest_asyncio.fixture
