@@ -4,84 +4,84 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-ENV_FILE="deploy/.env.prod"
-COMPOSE_FILE="deploy/docker-compose.prod.yml"
+REPO="$(pwd)"
+ENV_FILE="deploy/.env"
+COMPOSE_FILE="docker-compose.prod.yml"   # run from inside deploy/
 PROJECT="ai-assistant"
 
 echo "==> AI Assistant deploy"
 
-# ---- 1. swap (image builds are memory-hungry on small VPS) -----------------
+# ---- 1. swap ------------------------------------------------------------
 if [ "$(free -m | awk '/^Swap:/ {print $2}')" -lt 1024 ]; then
   echo "==> creating 2G swapfile"
-  fallocate -l 2G /swapfile
-  chmod 600 /swapfile
-  mkswap /swapfile
-  swapon /swapfile
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
   grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-# ---- 2. container engine + compose ----------------------------------------
-if command -v podman >/dev/null 2>&1; then
-  ENGINE=podman
-elif command -v docker >/dev/null 2>&1; then
-  ENGINE=docker
-else
-  echo "==> installing podman"
-  apt-get update && apt-get install -y podman
-  ENGINE=podman
+# ---- 2. engine + compose --------------------------------------------
+if command -v podman >/dev/null 2>&1; then ENGINE=podman
+elif command -v docker >/dev/null 2>&1; then ENGINE=docker
+else echo "==> installing podman"; apt-get update -qq && apt-get install -y -qq podman; ENGINE=podman
 fi
 
 if $ENGINE compose version >/dev/null 2>&1; then
-  COMPOSE="$ENGINE compose -p $PROJECT"
+  COMPOSE="$ENGINE compose"
 elif command -v podman-compose >/dev/null 2>&1; then
-  COMPOSE="podman-compose -p $PROJECT"
+  COMPOSE="podman-compose"
 else
   echo "==> installing podman-compose"
-  apt-get update && apt-get install -y podman-compose \
-    || (apt-get install -y python3-pip && pip3 install podman-compose)
-  COMPOSE="podman-compose -p $PROJECT"
+  apt-get update -qq && apt-get install -y -qq podman-compose \
+    || { apt-get install -y -qq python3-pip && pip3 install -q podman-compose; }
+  COMPOSE="podman-compose"
 fi
-echo "==> engine: $ENGINE   compose: $COMPOSE"
+echo "==> engine=$ENGINE  compose=$COMPOSE"
 
-# keep containers alive across reboot (rootful podman)
-if [ "$ENGINE" = podman ]; then
-  systemctl enable --now podman-restart.service 2>/dev/null || true
-fi
+[ "$ENGINE" = podman ] && systemctl enable --now podman-restart.service 2>/dev/null || true
 
-# ---- 3. env file --------------------------------------------------------
+# ---- 3. env file ---------------------------------------------------
 if [ ! -f "$ENV_FILE" ]; then
   echo "==> generating $ENV_FILE"
-  cp deploy/.env.prod.example "$ENV_FILE"
+  cp deploy/.env.example "$ENV_FILE"
   gen() { openssl rand -hex 24; }
   sed -i "s|^POSTGRES_PASSWORD_APP=.*|POSTGRES_PASSWORD_APP=$(gen)|" "$ENV_FILE"
   sed -i "s|^POSTGRES_PASSWORD_COMPANY=.*|POSTGRES_PASSWORD_COMPANY=$(gen)|" "$ENV_FILE"
   sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(gen)|" "$ENV_FILE"
-  sed -i "s|^SEED_ADMIN_PASSWORD=.*|SEED_ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -d '/+=')|" "$ENV_FILE"
+  sed -i "s|^SEED_ADMIN_PASSWORD=.*|SEED_ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -dc 'A-Za-z0-9')|" "$ENV_FILE"
   IP="$(curl -fsS4 ifconfig.me 2>/dev/null || echo localhost)"
-  sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=[\"http://$IP\"]|" "$ENV_FILE"
-  # let the invoking (non-root) user edit it
-  [ -n "${SUDO_USER:-}" ] && chown "$SUDO_USER":"$SUDO_USER" "$ENV_FILE"
+  sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=http://$IP|" "$ENV_FILE"
+  [ -n "${SUDO_USER:-}" ] && chown "$SUDO_USER":"$SUDO_USER" "$ENV_FILE" || true
   chmod 600 "$ENV_FILE"
   echo
-  echo "  >>> EDIT $ENV_FILE — set OLLAMA_API_KEY and SEED_ADMIN_EMAIL — then re-run this script."
+  echo "  >>> EDIT $ENV_FILE  (set OLLAMA_API_KEY and SEED_ADMIN_EMAIL)  then re-run this script."
   echo
   exit 0
 fi
 
-if ! grep -q '^OLLAMA_API_KEY=.\+' "$ENV_FILE"; then
-  echo "OLLAMA_API_KEY is empty in $ENV_FILE — set it and re-run." >&2
+grep -q '^OLLAMA_API_KEY=.\+' "$ENV_FILE" || { echo "OLLAMA_API_KEY is empty in $ENV_FILE" >&2; exit 1; }
+
+# ---- 4. port 80 preflight -----------------------------------------
+if ss -tlnH 2>/dev/null | awk '{print $4}' | grep -qE '(:|\.)80$'; then
+  echo "!! Something is already listening on port 80:"
+  ss -tlnp 2>/dev/null | grep -E ':80\s' || true
+  echo "!! Stop it first, e.g.:  sudo systemctl disable --now nginx apache2"
+  echo "!! (or set HTTP_PORT=8080 in $ENV_FILE to run on a different port)"
   exit 1
 fi
 
-# ---- 4. build + start -------------------------------------------------
+# ---- 5. build + start -------------------------------------------
 mkdir -p deploy/certbot/www deploy/certbot/conf
-echo "==> building & starting (first run takes a few minutes)"
-$COMPOSE -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build
+cd deploy
+echo "==> stopping any previous stack"
+$COMPOSE -p "$PROJECT" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+echo "==> building & starting (first run: a few minutes)"
+$COMPOSE -p "$PROJECT" -f "$COMPOSE_FILE" up -d --build
+cd "$REPO"
 
-echo "==> waiting for backend..."
+echo "==> waiting for backend (migrations + seed can take ~1 min)..."
+BE="$($ENGINE ps --format '{{.Names}}' | grep -E "${PROJECT}[-_]backend[-_]1" | head -1)"
 for _ in $(seq 1 60); do
-  if $COMPOSE -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T backend \
-       python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')" \
+  if [ -n "$BE" ] && $ENGINE exec "$BE" python -c \
+       "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')" \
        >/dev/null 2>&1; then
     echo "==> backend healthy"; break
   fi
@@ -91,10 +91,9 @@ done
 IP="$(curl -fsS4 ifconfig.me 2>/dev/null || echo '<vps-ip>')"
 echo
 echo "======================================================================"
-echo " Deployed.  Open  http://$IP"
+echo " Deployed.   http://$IP"
 grep -E '^SEED_ADMIN_(EMAIL|PASSWORD)=' "$ENV_FILE" | sed 's/^/   /'
 echo
-echo " Logs:     $COMPOSE -f $COMPOSE_FILE --env-file $ENV_FILE logs -f"
+echo " Logs:     cd deploy && $COMPOSE -p $PROJECT logs -f"
 echo " Redeploy: git pull && sudo bash deploy/setup.sh"
-echo " HTTPS:    see deploy/DEPLOY.md (needs a domain)"
 echo "======================================================================"

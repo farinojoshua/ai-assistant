@@ -19,21 +19,21 @@ cd ai-assistant
 sudo bash deploy/setup.sh
 ```
 
-Adds swap, ensures a container engine + compose, writes `deploy/.env.prod`
+Adds swap, ensures a container engine + compose, writes `deploy/.env`
 with random DB passwords + JWT secret, then stops so you can fill in the rest.
 
-## 3. Edit `deploy/.env.prod`
+## 3. Edit `deploy/.env`
 
 ```bash
-nano deploy/.env.prod
+nano deploy/.env
 ```
 
 Set at least:
 - `OLLAMA_API_KEY` — your Ollama Cloud key
 - `SEED_ADMIN_EMAIL` — your login email
 - (`SEED_ADMIN_PASSWORD` was auto-generated — note it or change it)
-- `CORS_ORIGINS` — auto-set to `["http://<VPS-IP>"]`; change to your domain
-  later, e.g. `["https://asisten.perusahaan.com"]`
+- `CORS_ORIGINS` — auto-set to `http://<VPS-IP>`; change to your domain
+  later, e.g. `https://asisten.perusahaan.com` (comma-separated for several)
 
 ## 4. Deploy
 
@@ -57,19 +57,20 @@ Also open 80/443 in the VPS provider's security-group / firewall panel.
 
 ## Day-to-day
 
-`setup.sh` chooses the compose command; to run it by hand:
+`setup.sh` chooses the compose command. To run it by hand, work from
+`deploy/` (so `.env` is picked up):
 
 ```bash
-# Podman:
-CF="podman compose -p ai-assistant -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod"
-# Docker:
-CF="docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod"
+cd ~/ai-assistant/deploy
+CF="podman compose -p ai-assistant -f docker-compose.prod.yml"   # or: docker compose ...
 
 $CF ps                    # status
 $CF logs -f backend       # tail logs
-git pull && $CF up -d --build   # redeploy
 $CF down                  # stop (data kept in volumes)
 $CF exec backend python scripts/seed_prod.py   # re-run seed
+
+# redeploy after a code change:
+cd ~/ai-assistant && git pull && sudo bash deploy/setup.sh
 ```
 
 ## HTTPS (needs a domain)
@@ -77,7 +78,7 @@ $CF exec backend python scripts/seed_prod.py   # re-run seed
 Camera on phones and secure logins want HTTPS. Point a domain's A record at
 the VPS IP, then:
 
-1. In `deploy/.env.prod`: `CORS_ORIGINS=["https://your.domain"]`
+1. In `deploy/.env`: `CORS_ORIGINS=https://your.domain`
 2. In `deploy/nginx.conf`: `server_name your.domain;`
 3. Issue the cert:
    ```bash
@@ -99,7 +100,7 @@ Renewal: monthly cron running `certbot renew` then `$CF exec nginx nginx -s relo
 The sample stok/karyawan/transaksi data loads once on first boot. To use the
 company's real DB instead:
 
-1. `SEED_COMPANY_DATA=0` in `deploy/.env.prod`
+1. `SEED_COMPANY_DATA=0` in `deploy/.env`
 2. Change `COMPANY_DATABASE_URL` / `COMPANY_DATABASE_WRITE_URL` in
    `deploy/docker-compose.prod.yml` to the real DSNs (read-only for the
    first, INSERT/UPDATE-on-stok_barang for the second)

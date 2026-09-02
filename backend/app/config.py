@@ -1,6 +1,9 @@
+import json
 from functools import lru_cache
+from typing import Annotated
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -21,13 +24,24 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-secret-change-me"
     jwt_access_ttl_min: int = 30
     jwt_refresh_ttl_days: int = 14
-    cors_origins: list[str] = [
+    cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
         "http://localhost:3002",
     ]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_origins(cls, v):
+        """Accept a real list, a JSON list, or a comma/space-separated string."""
+        if isinstance(v, (list, tuple)):
+            return list(v)
+        v = str(v).strip()
+        if v.startswith("["):
+            return json.loads(v)
+        return [o.strip() for o in v.replace(",", " ").split() if o.strip()]
 
     # LLM
     llm_provider: str = "ollama_cloud"
