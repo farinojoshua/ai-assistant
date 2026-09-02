@@ -72,4 +72,9 @@ def test_spec_shape() -> None:
     spec = CekStok().spec
     assert spec.name == "cek_stok"
     assert spec.input_schema["properties"]["query"]["type"] == "string"
-    assert "query" in spec.input_schema["required"]
+    assert "limit" in spec.input_schema["properties"]
+
+
+async def test_empty_query_returns_all(ctx: ToolContext) -> None:
+    out = await CekStok().run(CekStokArgs(query=""), ctx)
+    assert len(out["rows"]) == 15

@@ -20,18 +20,28 @@ _SQL = text(
 
 
 class CekStokArgs(BaseModel):
-    query: str = Field(description="nama produk atau kode SKU")
+    query: str = Field(
+        default="",
+        description=(
+            "nama produk atau kode SKU. Kosongkan (\"\") untuk mengambil "
+            "SEMUA barang — pakai ini bila pertanyaannya soal kondisi stok "
+            "umum, mis. 'barang yang stoknya di bawah 10' atau 'daftar semua "
+            "barang'."
+        ),
+    )
     gudang: str | None = Field(
         default=None, description="filter nama gudang (opsional)"
     )
-    limit: int = Field(default=20, ge=1, le=100)
+    limit: int = Field(default=100, ge=1, le=100)
 
 
 class CekStok(Tool):
     name = "cek_stok"
     description = (
-        "Cek jumlah stok barang di gudang berdasarkan nama produk atau SKU. "
-        "Bisa difilter per gudang."
+        "Cek stok barang di gudang. Cari berdasarkan nama produk atau SKU, "
+        "atau kosongkan query untuk mengambil seluruh daftar barang lalu "
+        "saring sendiri (mis. cari yang qty-nya kecil). Bisa difilter per "
+        "gudang. Mengembalikan nama, sku, qty, satuan, gudang."
     )
     args_model = CekStokArgs
 

@@ -1,0 +1,143 @@
+[
+  {
+    "id": "stok-total-usb",
+    "kategori": "stok",
+    "pertanyaan": "berapa total stok kabel USB?",
+    "expect_tools": ["cek_stok"],
+    "expect_contains": ["55"]
+  },
+  {
+    "id": "stok-sku",
+    "kategori": "stok",
+    "pertanyaan": "cek stok untuk SKU FD-128",
+    "expect_tools": ["cek_stok"],
+    "expect_contains": ["25"]
+  },
+  {
+    "id": "stok-gudang-b",
+    "kategori": "stok",
+    "pertanyaan": "barang apa saja yang ada di Gudang B?",
+    "expect_tools": ["cek_stok"],
+    "expect_contains": ["Kabel HDMI", "Adaptor Charger 65W"]
+  },
+  {
+    "id": "stok-low",
+    "kategori": "stok",
+    "pertanyaan": "barang apa saja yang stoknya di bawah 10?",
+    "expect_tools": ["cek_stok"],
+    "expect_contains": ["Adaptor Charger 65W", "Webcam"]
+  },
+  {
+    "id": "stok-notfound",
+    "kategori": "stok",
+    "pertanyaan": "ada stok laptop gaming?",
+    "expect_tools": ["cek_stok"],
+    "expect_contains": ["tidak"]
+  },
+  {
+    "id": "kar-dept",
+    "kategori": "karyawan",
+    "pertanyaan": "siapa saja karyawan di departemen Keuangan?",
+    "expect_tools": ["cari_karyawan"],
+    "expect_contains": ["Dewi Lestari", "Rizky Pratama"]
+  },
+  {
+    "id": "kar-nip",
+    "kategori": "karyawan",
+    "pertanyaan": "karyawan dengan NIP EMP-009 itu siapa dan jabatannya apa?",
+    "expect_tools": ["cari_karyawan"],
+    "expect_contains": ["Fajar Hidayat", "Sysadmin"]
+  },
+  {
+    "id": "kar-cuti",
+    "kategori": "karyawan",
+    "pertanyaan": "ada karyawan yang sedang cuti tidak?",
+    "expect_tools": ["cari_karyawan"],
+    "expect_contains": ["Ahmad Fauzi"]
+  },
+  {
+    "id": "kar-count-penjualan",
+    "kategori": "karyawan",
+    "pertanyaan": "berapa jumlah karyawan di departemen Penjualan?",
+    "expect_tools": ["cari_karyawan"],
+    "expect_contains": ["3"]
+  },
+  {
+    "id": "kar-nonaktif",
+    "kategori": "karyawan",
+    "pertanyaan": "siapa karyawan yang statusnya nonaktif?",
+    "expect_tools": ["cari_karyawan"],
+    "expect_contains": ["Maya Sari"]
+  },
+  {
+    "id": "trx-pemasukan",
+    "kategori": "transaksi",
+    "pertanyaan": "berapa total pemasukan selama bulan Agustus 2026?",
+    "expect_tools": ["cari_transaksi"],
+    "expect_contains": ["68"]
+  },
+  {
+    "id": "trx-pengeluaran",
+    "kategori": "transaksi",
+    "pertanyaan": "berapa total pengeluaran di bulan Agustus 2026?",
+    "expect_tools": ["cari_transaksi"],
+    "expect_contains": ["27"]
+  },
+  {
+    "id": "trx-count-masuk",
+    "kategori": "transaksi",
+    "pertanyaan": "ada berapa transaksi bertipe masuk di Agustus 2026?",
+    "expect_tools": ["cari_transaksi"],
+    "expect_contains": ["6"]
+  },
+  {
+    "id": "trx-besar",
+    "kategori": "transaksi",
+    "pertanyaan": "transaksi mana saja yang nominalnya di atas 20 juta pada Agustus 2026?",
+    "expect_tools": ["cari_transaksi"],
+    "expect_contains": ["TRX-0006"]
+  },
+  {
+    "id": "trx-kosong",
+    "kategori": "transaksi",
+    "pertanyaan": "apakah ada transaksi di bulan Juli 2026?",
+    "expect_tools": ["cari_transaksi"],
+    "expect_contains": ["tidak"]
+  },
+  {
+    "id": "multi-flashdisk-powerbank",
+    "kategori": "multi-tool",
+    "pertanyaan": "bandingkan total stok flashdisk dengan total stok powerbank, mana yang lebih banyak?",
+    "expect_tools": ["cek_stok"],
+    "expect_contains": ["95", "29", "flashdisk"]
+  },
+  {
+    "id": "multi-kepala-gudang",
+    "kategori": "multi-tool",
+    "pertanyaan": "siapa kepala gudang, dan ada berapa jenis barang di Gudang A?",
+    "expect_tools": ["cari_karyawan", "cek_stok"],
+    "expect_contains": ["Budi Santoso"]
+  },
+  {
+    "id": "followup-paling-sedikit",
+    "kategori": "follow-up",
+    "pertanyaan": "dari daftar barang di Gudang B tadi, mana yang stoknya paling sedikit?",
+    "history_from": "stok-gudang-b",
+    "expect_tools": [],
+    "expect_contains": ["Adaptor Charger 65W"]
+  },
+  {
+    "id": "offtopic-ibukota",
+    "kategori": "off-topic",
+    "pertanyaan": "ngomong-ngomong, ibukota Perancis apa ya?",
+    "expect_tools": [],
+    "expect_no_tool": true
+  },
+  {
+    "id": "offtopic-puisi",
+    "kategori": "off-topic",
+    "pertanyaan": "tolong buatkan puisi singkat tentang gudang",
+    "expect_tools": [],
+    "expect_no_tool": true
+  }
+]

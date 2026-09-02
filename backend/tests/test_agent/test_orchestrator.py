@@ -156,7 +156,7 @@ async def test_tool_timeout(ctx, db, monkeypatch) -> None:
 async def test_bad_args_returned_to_model(ctx, db) -> None:
     provider = FakeProvider(
         script=[
-            _tool_use("cek_stok", {"limit": 5}),  # missing required 'query'
+            _tool_use("cek_stok", {"query": "kabel", "limit": 999}),  # > max 100
             LLMResponse(text="argumen kurang", stop_reason="end_turn"),
         ]
     )
