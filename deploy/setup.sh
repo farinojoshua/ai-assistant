@@ -59,22 +59,26 @@ fi
 
 grep -q '^OLLAMA_API_KEY=.\+' "$ENV_FILE" || { echo "OLLAMA_API_KEY is empty in $ENV_FILE" >&2; exit 1; }
 
-# ---- 4. port 80 preflight -----------------------------------------
-if ss -tlnH 2>/dev/null | awk '{print $4}' | grep -qE '(:|\.)80$'; then
-  echo "!! Something is already listening on port 80:"
-  ss -tlnp 2>/dev/null | grep -E ':80\s' || true
-  echo "!! Stop it first, e.g.:  sudo systemctl disable --now nginx apache2"
-  echo "!! (or set HTTP_PORT=8080 in $ENV_FILE to run on a different port)"
-  exit 1
+# ---- 4. bundled proxy or host proxy? ----------------------------
+PORT80_LINE="$(ss -tlnpH 2>/dev/null | awk '$4 ~ /(:|\.)80$/' | head -1)"
+FILES="-f $COMPOSE_FILE"
+if [ -z "$PORT80_LINE" ]; then
+  echo "==> port 80 free — using the bundled nginx"
+  FILES="$FILES -f proxy.yml"
+  BUNDLED=1
+else
+  NAME="$(printf '%s' "$PORT80_LINE" | grep -oE '"[^"]+"' | head -1 | tr -d '\"')"
+  echo "==> port 80 is served by '${NAME:-another process}' — running behind it"
+  BUNDLED=0
 fi
 
 # ---- 5. build + start -------------------------------------------
 mkdir -p deploy/certbot/www deploy/certbot/conf
 cd deploy
 echo "==> stopping any previous stack"
-$COMPOSE -p "$PROJECT" -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+$COMPOSE -p "$PROJECT" $FILES down --remove-orphans 2>/dev/null || true
 echo "==> building & starting (first run: a few minutes)"
-$COMPOSE -p "$PROJECT" -f "$COMPOSE_FILE" up -d --build
+$COMPOSE -p "$PROJECT" $FILES up -d --build
 cd "$REPO"
 
 echo "==> waiting for backend (migrations + seed can take ~1 min)..."
@@ -91,9 +95,15 @@ done
 IP="$(curl -fsS4 ifconfig.me 2>/dev/null || echo '<vps-ip>')"
 echo
 echo "======================================================================"
-echo " Deployed.   http://$IP"
+if [ "$BUNDLED" = 1 ]; then
+  echo " Deployed.   http://$IP"
+else
+  echo " Stack is up on 127.0.0.1:3000 (frontend) and 127.0.0.1:8000 (backend)."
+  echo " Add a proxy block to your Caddy/nginx config — see deploy/Caddyfile.example"
+  echo " Caddy:  edit /etc/caddy/Caddyfile  then  sudo systemctl reload caddy"
+fi
 grep -E '^SEED_ADMIN_(EMAIL|PASSWORD)=' "$ENV_FILE" | sed 's/^/   /'
 echo
-echo " Logs:     cd deploy && $COMPOSE -p $PROJECT logs -f"
+echo " Logs:     cd deploy && $COMPOSE -p $PROJECT logs -f backend"
 echo " Redeploy: git pull && sudo bash deploy/setup.sh"
 echo "======================================================================"

@@ -1,0 +1,45 @@
+# Add this to your existing Caddyfile (usually /etc/caddy/Caddyfile),
+# then:  sudo systemctl reload caddy
+#
+# With a domain -> Caddy gets a Let's Encrypt cert automatically (HTTPS,
+# needed for phone cameras). Replace the site address accordingly.
+
+# --- option A: you have a domain pointed at this VPS ---
+asisten.perusahaan.com {
+	encode zstd gzip
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1        # stream SSE (chat) without buffering
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	request_body {
+		max_size 10MB              # receipt / goods photo uploads
+	}
+}
+
+# --- option B: IP only, plain HTTP on port 80 ---
+# :80 {
+# 	@api path /api/*
+# 	handle @api {
+# 		reverse_proxy 127.0.0.1:8000 {
+# 			flush_interval -1
+# 		}
+# 	}
+# 	handle {
+# 		reverse_proxy 127.0.0.1:3000
+# 	}
+# 	request_body {
+# 		max_size 10MB
+# 	}
+# }
+
+# After adding a domain, set in deploy/.env:
+#   CORS_ORIGINS=https://asisten.perusahaan.com
+# and re-run: sudo bash deploy/setup.sh

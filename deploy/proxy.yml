@@ -1,0 +1,17 @@
+# Bundled nginx reverse proxy — added by setup.sh ONLY when host port 80
+# is free. If you already run Caddy / nginx / Traefik on the host, this
+# file is skipped and you add a proxy block yourself (see deploy/Caddyfile.example).
+services:
+  nginx:
+    image: docker.io/library/nginx:1.27-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
