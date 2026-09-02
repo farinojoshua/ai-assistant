@@ -22,6 +22,69 @@ export async function login(email: string, password: string): Promise<string> {
   return data.access;
 }
 
+function authHeaders(): Record<string, string> {
+  return { authorization: `Bearer ${tokenStore.get()}` };
+}
+
+export type OcrResult = {
+  file_ref: string;
+  struk_hash: string;
+  merchant: string | null;
+  tanggal: string | null;
+  nominal: number | null;
+  kategori: string | null;
+  mata_uang: string;
+};
+
+export async function ocrReceipt(file: File): Promise<OcrResult> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_URL}/api/reimbursement/ocr`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: fd,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Gagal membaca struk (${res.status})`);
+  }
+  return res.json();
+}
+
+export type SubmitResult =
+  | { status: "disetujui"; id: string }
+  | {
+      status: "ditolak";
+      alasan: string;
+      klaim_lama: {
+        merchant: string;
+        tanggal_struk: string | null;
+        nominal: number;
+        diajukan_pada: string;
+      };
+    };
+
+export async function submitReimbursement(payload: {
+  file_ref: string;
+  struk_hash?: string;
+  merchant: string;
+  tanggal: string | null;
+  nominal: number;
+  kategori: string | null;
+  catatan?: string | null;
+}): Promise<SubmitResult> {
+  const res = await fetch(`${API_URL}/api/reimbursement/submit`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `Gagal mengajukan (${res.status})`);
+  }
+  return res.json();
+}
+
 export type StreamEvent =
   | { type: "tool"; name: string; arguments: Record<string, unknown> }
   | { type: "token"; text: string }

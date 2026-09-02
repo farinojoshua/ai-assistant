@@ -11,6 +11,8 @@ from app.auth.security import hash_password
 from app.db.models import Reimbursement, Tenant, User
 from app.reimbursement.ocr import OcrError, ReceiptData
 
+JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF"  # valid JPEG magic prefix
+
 
 @pytest.fixture
 async def auth(client: AsyncClient, db) -> dict[str, str]:
@@ -62,7 +64,7 @@ async def _do_ocr(client, auth, wire, receipt):
     return await client.post(
         "/api/reimbursement/ocr",
         headers=auth,
-        files={"file": ("struk.jpg", b"fakejpegbytes", "image/jpeg")},
+        files={"file": ("struk.jpg", JPEG + b"fakejpegbytes", "image/jpeg")},
     )
 
 
@@ -154,6 +156,6 @@ async def test_submit_bad_file_ref(client, auth, wire) -> None:
 async def test_requires_auth(client, wire) -> None:
     r = await client.post(
         "/api/reimbursement/ocr",
-        files={"file": ("a.jpg", b"x", "image/jpeg")},
+        files={"file": ("a.jpg", JPEG, "image/jpeg")},
     )
     assert r.status_code == 401

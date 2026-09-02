@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { login, streamChat, tokenStore, type StreamEvent } from "@/lib/api";
+import {
+  login,
+  ocrReceipt,
+  streamChat,
+  submitReimbursement,
+  tokenStore,
+  type OcrResult,
+  type StreamEvent,
+} from "@/lib/api";
 
 type Msg = { role: "user" | "assistant"; text: string };
 type Item = Msg | { role: "tool"; text: string };
@@ -69,9 +77,34 @@ function Chat({ onLogout }: { onLogout: () => void }) {
     scroller.current?.scrollTo(0, scroller.current.scrollHeight);
   }, [items]);
 
+  const [panel, setPanel] = useState<null | "reimburse">(null);
+
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
+
+    if (text.startsWith("/")) {
+      const cmd = text.slice(1).toLowerCase().split(/\s+/)[0];
+      setInput("");
+      if (cmd === "reimburse" || cmd === "reimburst") {
+        setPanel("reimburse");
+      } else if (cmd === "help") {
+        setItems((x) => [
+          ...x,
+          {
+            role: "tool",
+            text: "Perintah: /reimburse — ajukan reimbursement dari foto struk",
+          },
+        ]);
+      } else {
+        setItems((x) => [
+          ...x,
+          { role: "tool", text: `Perintah tidak dikenal: /${cmd}` },
+        ]);
+      }
+      return;
+    }
+
     setInput("");
     setItems((x) => [...x, { role: "user", text }]);
     setBusy(true);
@@ -132,6 +165,16 @@ function Chat({ onLogout }: { onLogout: () => void }) {
         {busy && <div className="tool-note">…</div>}
       </div>
 
+      {panel === "reimburse" && (
+        <Reimburse
+          onClose={() => setPanel(null)}
+          onDone={(msg) => {
+            setItems((x) => [...x, { role: "tool", text: msg }]);
+            setPanel(null);
+          }}
+        />
+      )}
+
       <div className="composer">
         <textarea
           value={input}
@@ -142,11 +185,155 @@ function Chat({ onLogout }: { onLogout: () => void }) {
               send();
             }
           }}
-          placeholder="Tulis pertanyaan…"
+          placeholder="Tulis pertanyaan…  (ketik /reimburse untuk klaim struk)"
         />
         <button onClick={send} disabled={busy || !input.trim()}>
           Kirim
         </button>
+      </div>
+    </div>
+  );
+}
+
+function Reimburse({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const [ocr, setOcr] = useState<OcrResult | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [form, setForm] = useState({
+    merchant: "",
+    tanggal: "",
+    nominal: "",
+    kategori: "",
+    catatan: "",
+  });
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr("");
+    setBusy(true);
+    setPreview(URL.createObjectURL(file));
+    try {
+      const r = await ocrReceipt(file);
+      setOcr(r);
+      setForm({
+        merchant: r.merchant ?? "",
+        tanggal: r.tanggal ?? "",
+        nominal: r.nominal != null ? String(r.nominal) : "",
+        kategori: r.kategori ?? "",
+        catatan: "",
+      });
+    } catch (e) {
+      setErr((e as Error).message);
+      setPreview(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit() {
+    if (!ocr) return;
+    setErr("");
+    setBusy(true);
+    try {
+      const res = await submitReimbursement({
+        file_ref: ocr.file_ref,
+        struk_hash: ocr.struk_hash,
+        merchant: form.merchant,
+        tanggal: form.tanggal || null,
+        nominal: Number(form.nominal),
+        kategori: form.kategori || null,
+        catatan: form.catatan || null,
+      });
+      if (res.status === "disetujui") {
+        onDone(
+          `✅ Reimbursement disetujui — ${form.merchant}, Rp ${Number(
+            form.nominal,
+          ).toLocaleString("id-ID")}`,
+        );
+      } else {
+        const k = res.klaim_lama;
+        onDone(
+          `❌ Ditolak: ${res.alasan} (klaim sebelumnya ${k.merchant}, Rp ${k.nominal.toLocaleString(
+            "id-ID",
+          )}, diajukan ${new Date(k.diajukan_pada).toLocaleDateString("id-ID")})`,
+        );
+      }
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const f = (k: keyof typeof form) => ({
+    value: form[k],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm({ ...form, [k]: e.target.value }),
+  });
+
+  return (
+    <div className="rb-overlay" onClick={onClose}>
+      <div className="rb-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="rb-head">
+          <b>Ajukan Reimbursement</b>
+          <button onClick={onClose}>✕</button>
+        </div>
+
+        {!ocr && (
+          <label className="rb-upload">
+            {busy ? "Membaca struk…" : "Pilih / foto struk"}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={onFile}
+              disabled={busy}
+            />
+          </label>
+        )}
+
+        {preview && <img className="rb-preview" src={preview} alt="struk" />}
+
+        {ocr && (
+          <div className="rb-form">
+            <label>
+              Merchant<input {...f("merchant")} />
+            </label>
+            <label>
+              Tanggal<input type="date" {...f("tanggal")} />
+            </label>
+            <label>
+              Nominal (Rp)<input type="number" {...f("nominal")} />
+            </label>
+            <label>
+              Kategori<input {...f("kategori")} />
+            </label>
+            <label>
+              Catatan<input {...f("catatan")} />
+            </label>
+          </div>
+        )}
+
+        {err && <div className="error">{err}</div>}
+
+        {ocr && (
+          <button
+            className="rb-submit"
+            onClick={submit}
+            disabled={busy || !form.merchant || !form.nominal}
+          >
+            {busy ? "Mengirim…" : "Ajukan"}
+          </button>
+        )}
       </div>
     </div>
   );

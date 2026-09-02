@@ -19,8 +19,18 @@ from app.reimbursement.ocr import OcrError, extract_receipt
 
 router = APIRouter(prefix="/api/reimbursement", tags=["reimbursement"])
 
-_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 _FILE_REF_RE = re.compile(r"^[0-9a-f-]{36}\.(jpg|png|webp)$")
+
+
+def _sniff(data: bytes) -> tuple[str, str] | None:
+    """Return (media_type, ext) from the file's magic bytes, or None."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg", ".jpg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png", ".png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp", ".webp"
+    return None
 
 
 def _upload_dir() -> Path:
@@ -55,18 +65,20 @@ async def ocr(
     file: Annotated[UploadFile, File()],
 ) -> OcrResult:
     settings = get_settings()
-    if file.content_type not in _EXT:
-        raise HTTPException(415, "format harus JPEG, PNG, atau WebP")
     data = await file.read()
     if len(data) > settings.upload_max_bytes:
         raise HTTPException(413, "ukuran file melebihi batas")
+    sniffed = _sniff(data)
+    if sniffed is None:
+        raise HTTPException(415, "format harus JPEG, PNG, atau WebP")
+    media_type, ext = sniffed
 
-    file_ref = f"{uuid.uuid4()}{_EXT[file.content_type]}"
+    file_ref = f"{uuid.uuid4()}{ext}"
     (_upload_dir() / file_ref).write_bytes(data)
     digest = hashlib.sha256(data).hexdigest()
 
     try:
-        receipt = await extract_receipt(data, file.content_type)
+        receipt = await extract_receipt(data, media_type)
     except OcrError as e:
         raise HTTPException(422, str(e)) from None
 
