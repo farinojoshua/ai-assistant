@@ -26,3 +26,10 @@ def get_provider(settings: Settings | None = None) -> LLMProvider:
     raise NotImplementedError(
         f"LLM provider {settings.llm_provider!r} not implemented yet"
     )
+
+
+def get_vision_provider(settings: Settings | None = None) -> LLMProvider:
+    """Provider pinned to the vision model (used for receipt OCR)."""
+    settings = settings or get_settings()
+    vision = settings.model_copy(update={"llm_model": settings.llm_vision_model})
+    return get_provider(vision)

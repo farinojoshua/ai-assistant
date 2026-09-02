@@ -26,7 +26,8 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: str = "ollama_cloud"
-    llm_model: str = "qwen2.5:72b"
+    llm_model: str = "gpt-oss:120b"
+    llm_vision_model: str = "gemma4:31b"
     ollama_base_url: str = "https://ollama.com"
     ollama_api_key: str = ""
     anthropic_api_key: str = ""
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     agent_max_iterations: int = 8
     agent_tool_timeout_s: int = 15
     agent_max_tool_calls_per_turn: int = 8
+
+    # Reimbursement
+    upload_dir: str = "uploads"
+    upload_max_bytes: int = 8 * 1024 * 1024
 
 
 @lru_cache

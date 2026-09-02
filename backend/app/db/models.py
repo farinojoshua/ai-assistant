@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -80,6 +80,29 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class Reimbursement(Base):
+    __tablename__ = "reimbursements"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    merchant: Mapped[str] = mapped_column(String(200))
+    tanggal_struk: Mapped[date | None] = mapped_column(Date, nullable=True)
+    nominal: Mapped[float] = mapped_column(Numeric(14, 2))
+    mata_uang: Mapped[str] = mapped_column(String(8), default="IDR")
+    kategori: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    catatan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    struk_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    struk_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(24))  # disetujui|ditolak|menunggu_approval
+    alasan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class AuditLog(Base):

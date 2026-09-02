@@ -138,3 +138,26 @@ class OpenAICompatibleProvider(LLMProvider):
             stop_reason=stop,
             usage=usage,
         )
+
+    async def chat_vision(
+        self, prompt: str, image_b64: str, media_type: str
+    ) -> str:
+        resp = await self._client.chat.completions.create(
+            model=self._model,
+            temperature=0,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media_type};base64,{image_b64}"
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+        return resp.choices[0].message.content or ""

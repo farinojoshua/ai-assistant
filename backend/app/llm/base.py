@@ -55,6 +55,12 @@ class LLMProvider(ABC):
     ) -> LLMResponse:
         """One model turn. Returns text, or tool calls to execute."""
 
+    async def chat_vision(
+        self, prompt: str, image_b64: str, media_type: str
+    ) -> str:
+        """Single-shot: text prompt + one image, returns raw text."""
+        raise NotImplementedError("provider ini belum mendukung input gambar")
+
 
 # ---- helpers for building the conversation ----------------------------------
 

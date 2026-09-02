@@ -6,6 +6,7 @@ from app.auth.deps import CurrentUser
 from app.auth.routes import router as auth_router
 from app.chat.routes import router as chat_router
 from app.config import get_settings
+from app.reimbursement.routes import router as reimbursement_router
 
 app = FastAPI(title="AI Assistant Backend")
 app.add_middleware(
@@ -16,6 +17,7 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(reimbursement_router)
 
 
 @app.get("/health")
