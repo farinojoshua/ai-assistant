@@ -77,7 +77,16 @@ async def test_new_conversation(client, auth, wire, db) -> None:
             LLMResponse(
                 stop_reason="tool_use",
                 tool_calls=[
-                    ToolCall(id="c1", name="cek_stok", arguments={"query": "kabel"})
+                    ToolCall(
+                        id="c1",
+                        name="ambil_data",
+                        arguments={
+                            "view": "v_stok",
+                            "filter": [
+                                {"kolom": "nama", "operator": "contains", "nilai": "kabel"}
+                            ],
+                        },
+                    )
                 ],
             ),
             LLMResponse(text="Ada 4 jenis kabel.", stop_reason="end_turn"),
@@ -90,7 +99,7 @@ async def test_new_conversation(client, auth, wire, db) -> None:
     events = _parse_sse(resp.text)
     kinds = [e[0] for e in events]
     assert kinds == ["tool", "token", "done"]
-    assert events[0][1]["name"] == "cek_stok"
+    assert events[0][1]["name"] == "ambil_data"
     assert events[1][1]["text"] == "Ada 4 jenis kabel."
     conv_id = events[2][1]["conversation_id"]
 

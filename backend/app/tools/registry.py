@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from app.llm.base import ToolSpec
+from app.tools.ambil_data import AmbilData
 from app.tools.base import Tool
-from app.tools.cari_karyawan import CariKaryawan
-from app.tools.cari_transaksi import CariTransaksi
-from app.tools.cek_stok import CekStok
+from app.tools.daftar_data import DaftarData
 
-_TOOLS: list[Tool] = [CekStok(), CariKaryawan(), CariTransaksi()]
+_TOOLS: list[Tool] = [DaftarData(), AmbilData()]
 
 _BY_NAME: dict[str, Tool] = {t.name: t for t in _TOOLS}
 

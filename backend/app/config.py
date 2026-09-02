@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
 
     # Agent
-    agent_max_iterations: int = 5
+    agent_max_iterations: int = 8
     agent_tool_timeout_s: int = 15
     agent_max_tool_calls_per_turn: int = 8
 

@@ -35,6 +35,13 @@ def _tool_use(name: str, args: dict, call_id: str = "c1") -> LLMResponse:
     )
 
 
+def _stok(nilai: str) -> dict:
+    return {
+        "view": "v_stok",
+        "filter": [{"kolom": "nama", "operator": "contains", "nilai": nilai}],
+    }
+
+
 async def _collect(gen):
     return [e async for e in gen]
 
@@ -46,7 +53,7 @@ async def _audit_count(db) -> int:
 async def test_single_tool_then_answer(ctx, db) -> None:
     provider = FakeProvider(
         script=[
-            _tool_use("cek_stok", {"query": "powerbank"}),
+            _tool_use("ambil_data", _stok("powerbank")),
             LLMResponse(text="Stok powerbank: 18 + 11.", stop_reason="end_turn"),
         ]
     )
@@ -60,13 +67,13 @@ async def test_single_tool_then_answer(ctx, db) -> None:
         )
     )
     assert isinstance(events[0], ToolEvent)
-    assert events[0].name == "cek_stok"
+    assert events[0].name == "ambil_data"
     assert isinstance(events[-1], TextEvent)
     assert "powerbank" in events[-1].text.lower()
 
     rows = (await db.execute(select(AuditLog))).scalars().all()
     assert len(rows) == 1
-    assert rows[0].tool_name == "cek_stok"
+    assert rows[0].tool_name == "ambil_data"
     assert rows[0].row_count == 2
     assert rows[0].error is None
 
@@ -81,8 +88,8 @@ async def test_two_tools_in_one_turn(ctx, db) -> None:
             LLMResponse(
                 stop_reason="tool_use",
                 tool_calls=[
-                    ToolCall(id="a", name="cek_stok", arguments={"query": "kabel"}),
-                    ToolCall(id="b", name="cek_stok", arguments={"query": "mouse"}),
+                    ToolCall(id="a", name="ambil_data", arguments=_stok("kabel")),
+                    ToolCall(id="b", name="ambil_data", arguments=_stok("mouse")),
                 ],
             ),
             LLMResponse(text="ok", stop_reason="end_turn"),
@@ -103,7 +110,7 @@ async def test_two_tools_in_one_turn(ctx, db) -> None:
 
 async def test_max_iterations(ctx, db) -> None:
     provider = FakeProvider(
-        script=[_tool_use("cek_stok", {"query": "kabel"}, f"c{i}") for i in range(10)]
+        script=[_tool_use("ambil_data", _stok("kabel"), f"c{i}") for i in range(10)]
     )
     settings = Settings(agent_max_iterations=3)
     events = await _collect(
@@ -124,16 +131,16 @@ async def test_max_iterations(ctx, db) -> None:
 async def test_tool_timeout(ctx, db, monkeypatch) -> None:
     import asyncio
 
-    from app.tools.cek_stok import CekStok
+    from app.tools.ambil_data import AmbilData
 
     async def _slow(self, args, ctx):  # noqa: ANN001
         await asyncio.sleep(2)
         return {"rows": []}
 
-    monkeypatch.setattr(CekStok, "run", _slow)
+    monkeypatch.setattr(AmbilData, "run", _slow)
     provider = FakeProvider(
         script=[
-            _tool_use("cek_stok", {"query": "kabel"}),
+            _tool_use("ambil_data", _stok("kabel")),
             LLMResponse(text="maaf, timeout", stop_reason="end_turn"),
         ]
     )
@@ -156,7 +163,7 @@ async def test_tool_timeout(ctx, db, monkeypatch) -> None:
 async def test_bad_args_returned_to_model(ctx, db) -> None:
     provider = FakeProvider(
         script=[
-            _tool_use("cek_stok", {"query": "kabel", "limit": 999}),  # > max 100
+            _tool_use("ambil_data", {"view": "v_stok", "limit": 999}),  # > max 200
             LLMResponse(text="argumen kurang", stop_reason="end_turn"),
         ]
     )

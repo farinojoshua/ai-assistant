@@ -183,13 +183,22 @@ ToolContext = { user: User, tenant_id: str, db: CompanyDbGateway }
   sebagai `{ "error": "...", "hint": "..." }`, bukan exception —
   supaya LLM bisa mencoba lagi.
 
-**Tool MVP:**
+**Tool MVP — REVISI (Opsi 2, 2026-09-02):** tool spesifik per tabel diganti
+2 tool generik supaya tabel baru = 0 kode.
 
-| Tool | Argumen | Query (ke VIEW) |
-|---|---|---|
-| `cari_karyawan` | `query: str` (nama/NIP), `departemen?: str` | `SELECT nama, nip, departemen, jabatan, status FROM v_karyawan WHERE (nama ILIKE :q OR nip = :q) [AND departemen ILIKE :dep] LIMIT :n` |
-| `cek_stok` | `query: str` (nama/SKU), `gudang?: str` | `SELECT nama, sku, qty, satuan, gudang FROM v_stok WHERE (nama ILIKE :q OR sku = :q) [AND gudang ILIKE :g] LIMIT :n` |
-| `cari_transaksi` | `dari: date`, `sampai: date`, `tipe?: str`, `min_nominal?: number` | `SELECT tgl, no_transaksi, tipe, nominal, keterangan FROM v_transaksi WHERE tgl BETWEEN :d1 AND :d2 [AND tipe = :t] [AND nominal >= :m] ORDER BY tgl DESC LIMIT :n` |
+| Tool | Fungsi |
+|---|---|
+| `daftar_data` | tanpa argumen → daftar view + deskripsi + kolom (+ nilai untuk kolom kategori berkardinalitas rendah) |
+| `ambil_data` | `view`, `filter: [{kolom, operator, nilai}]` (op: `= != > >= < <= contains`), `kolom?`, `urut?`, `agregasi? {fungsi, kolom, group_by}`, `limit` |
+
+Whitelist di `app/tools/schema.py` (`EXPOSED_VIEWS: {view -> deskripsi}`);
+kolom ditemukan runtime dari `information_schema`. Skema di-inject ke system
+prompt tiap turn. Nama kolom/view divalidasi terhadap skema (identifier tidak
+bisa di-bind, jadi whitelist); semua nilai = bind param; selalu `LIMIT`;
+engine read-only.
+
+Tabel baru = bikin VIEW + 1 baris di `EXPOSED_VIEWS`. Tidak perlu tulis tool,
+test, atau migrasi.
 
 **`registry.py`:** kumpulan instance Tool + helper `all_specs() ->
 list[ToolSpec]` dan `get(name) -> Tool`.

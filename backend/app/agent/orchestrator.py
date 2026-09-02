@@ -20,6 +20,7 @@ from app.llm.base import (
 )
 from app.tools import registry
 from app.tools.base import ToolContext
+from app.tools.schema import format_for_prompt
 
 
 async def _run_tool(
@@ -54,8 +55,9 @@ async def run_turn(
     settings: Settings | None = None,
 ) -> AsyncIterator[Event]:
     settings = settings or get_settings()
+    schema = await format_for_prompt(ctx.db)
     messages: list[Message] = [
-        Message(role="system", content=SYSTEM_PROMPT),
+        Message(role="system", content=f"{SYSTEM_PROMPT}\n\n{schema}"),
         *history,
         Message(role="user", content=user_message),
     ]
