@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-secret-change-me"
     jwt_access_ttl_min: int = 30
     jwt_refresh_ttl_days: int = 14
+    cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     # LLM
     llm_provider: str = "ollama_cloud"
