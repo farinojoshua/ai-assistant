@@ -284,7 +284,8 @@ header button {
   color: var(--muted);
 }
 
-.rb-form input {
+.rb-form input,
+.rb-form select {
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 6px;

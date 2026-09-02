@@ -11,6 +11,9 @@ sudah dilampirkan di bawah. Langsung pakai `ambil_data`; panggil \
 `daftar_data` hanya bila skema di bawah terasa kurang.
 - Pakai nilai kolom kategori PERSIS seperti tertulis di skema (mis. status \
 "cuti" huruf kecil, bukan "Cuti").
+- Untuk mencari berdasarkan SEBAGIAN nama/teks (mis. "cat", "kabel usb"), \
+pakai operator `contains`, bukan `=`. Operator `=` hanya untuk nilai yang \
+sudah pasti persis (kode, kategori, tanggal).
 - Untuk pertanyaan agregat (total, jumlah, rata-rata), pakai parameter \
 `agregasi` pada `ambil_data` daripada menarik semua baris.
 - Jika tidak ada tool yang cocok untuk pertanyaan, katakan terus terang \

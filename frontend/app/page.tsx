@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   login,
+  ocrGoods,
   ocrReceipt,
+  receiveStock,
   streamChat,
   submitReimbursement,
   tokenStore,
+  type GoodsOcr,
   type OcrResult,
   type StreamEvent,
 } from "@/lib/api";
@@ -73,6 +76,7 @@ function Login({ onDone }: { onDone: () => void }) {
 
 const COMMANDS = [
   { cmd: "reimburse", label: "/reimburse", desc: "Ajukan reimbursement dari foto struk" },
+  { cmd: "stok", label: "/stok", desc: "Tambah stok gudang dari foto barang" },
   { cmd: "help", label: "/help", desc: "Daftar perintah" },
 ];
 
@@ -88,7 +92,7 @@ function Chat({ onLogout }: { onLogout: () => void }) {
     scroller.current?.scrollTo(0, scroller.current.scrollHeight);
   }, [items]);
 
-  const [panel, setPanel] = useState<null | "reimburse">(null);
+  const [panel, setPanel] = useState<null | "reimburse" | "stok">(null);
 
   const slashMenu =
     input.startsWith("/") && !input.includes(" ")
@@ -99,6 +103,8 @@ function Chat({ onLogout }: { onLogout: () => void }) {
     setInput("");
     if (cmd === "reimburse" || cmd === "reimburst") {
       setPanel("reimburse");
+    } else if (cmd === "stok" || cmd === "stock") {
+      setPanel("stok");
     } else if (cmd === "help") {
       setItems((x) => [
         ...x,
@@ -186,6 +192,16 @@ function Chat({ onLogout }: { onLogout: () => void }) {
 
       {panel === "reimburse" && (
         <Reimburse
+          onClose={() => setPanel(null)}
+          onDone={(msg) => {
+            setItems((x) => [...x, { role: "tool", text: msg }]);
+            setPanel(null);
+          }}
+        />
+      )}
+
+      {panel === "stok" && (
+        <StockReceive
           onClose={() => setPanel(null)}
           onDone={(msg) => {
             setItems((x) => [...x, { role: "tool", text: msg }]);
@@ -392,6 +408,184 @@ function Reimburse({
             disabled={busy || !form.merchant || !form.nominal}
           >
             {busy ? "Mengirim…" : "Ajukan"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StockReceive({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  const [ocr, setOcr] = useState<GoodsOcr | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  // "" = barang baru, otherwise the candidate id as string
+  const [match, setMatch] = useState<string>("");
+  const [form, setForm] = useState({
+    jumlah: "",
+    nama: "",
+    sku: "",
+    satuan: "",
+    gudang: "",
+    catatan: "",
+  });
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr("");
+    setBusy(true);
+    setPreview(URL.createObjectURL(file));
+    try {
+      const r = await ocrGoods(file);
+      setOcr(r);
+      const first = r.kandidat[0];
+      setMatch(first ? String(first.id) : "");
+      setForm({
+        jumlah: r.jumlah != null ? String(r.jumlah) : "",
+        nama: [r.produk, r.merk, r.ukuran].filter(Boolean).join(" "),
+        sku: "",
+        satuan: r.satuan ?? "",
+        gudang: "",
+        catatan: "",
+      });
+    } catch (e) {
+      setErr((e as Error).message);
+      setPreview(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit() {
+    if (!ocr) return;
+    setErr("");
+    setBusy(true);
+    try {
+      const jumlah = Number(form.jumlah);
+      const res =
+        match === ""
+          ? await receiveStock({
+              mode: "new",
+              foto_ref: ocr.foto_ref,
+              jumlah,
+              nama: form.nama,
+              sku: form.sku,
+              satuan: form.satuan,
+              gudang: form.gudang,
+              catatan: form.catatan || null,
+            })
+          : await receiveStock({
+              mode: "existing",
+              foto_ref: ocr.foto_ref,
+              jumlah,
+              product_id: Number(match),
+              catatan: form.catatan || null,
+            });
+      onDone(
+        `✅ ${res.nama}: ${res.qty_before} → ${res.qty_after} (${res.gudang})`,
+      );
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const f = (k: keyof typeof form) => ({
+    value: form[k],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+      setForm({ ...form, [k]: e.target.value }),
+  });
+
+  return (
+    <div className="rb-overlay" onClick={onClose}>
+      <div className="rb-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="rb-head">
+          <b>Tambah Stok Gudang</b>
+          <button onClick={onClose}>✕</button>
+        </div>
+
+        {!ocr && (
+          <label className="rb-upload">
+            {busy ? "Membaca barang…" : "Pilih / foto barang"}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={onFile}
+              disabled={busy}
+            />
+          </label>
+        )}
+
+        {preview && <img className="rb-preview" src={preview} alt="barang" />}
+
+        {ocr && (
+          <div className="rb-form">
+            <label>
+              Barang ini
+              <select
+                value={match}
+                onChange={(e) => setMatch(e.target.value)}
+              >
+                {ocr.kandidat.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.nama} — {c.sku} (stok {c.qty}, {c.gudang})
+                  </option>
+                ))}
+                <option value="">+ Barang baru</option>
+              </select>
+            </label>
+
+            {match === "" && (
+              <>
+                <label>
+                  Nama barang<input {...f("nama")} />
+                </label>
+                <label>
+                  SKU<input {...f("sku")} />
+                </label>
+                <label>
+                  Satuan<input {...f("satuan")} />
+                </label>
+                <label>
+                  Gudang<input {...f("gudang")} />
+                </label>
+              </>
+            )}
+
+            <label>
+              Jumlah masuk<input type="number" {...f("jumlah")} />
+            </label>
+            <label>
+              Catatan<input {...f("catatan")} />
+            </label>
+          </div>
+        )}
+
+        {err && <div className="error">{err}</div>}
+
+        {ocr && (
+          <button
+            className="rb-submit"
+            onClick={submit}
+            disabled={
+              busy ||
+              !form.jumlah ||
+              (match === "" &&
+                (!form.nama || !form.sku || !form.satuan || !form.gudang))
+            }
+          >
+            {busy ? "Menyimpan…" : "Tambahkan ke stok"}
           </button>
         )}
       </div>

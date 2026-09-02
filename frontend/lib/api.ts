@@ -130,6 +130,64 @@ export async function submitReimbursement(payload: {
   );
 }
 
+export type StockCandidate = {
+  id: number;
+  nama: string;
+  sku: string;
+  qty: number;
+  satuan: string;
+  gudang: string;
+};
+
+export type GoodsOcr = {
+  foto_ref: string;
+  produk: string | null;
+  merk: string | null;
+  ukuran: string | null;
+  jumlah: number | null;
+  satuan: string | null;
+  kandidat: StockCandidate[];
+};
+
+export async function ocrGoods(file: File): Promise<GoodsOcr> {
+  const fd = new FormData();
+  fd.append("file", file);
+  return jsonOrThrow(
+    await apiFetch("/api/stock/ocr", { method: "POST", body: fd }),
+    "Gagal membaca foto barang",
+  );
+}
+
+export type ReceiveResult = {
+  status: "ok";
+  nama: string;
+  sku: string;
+  gudang: string;
+  qty_before: number;
+  qty_after: number;
+};
+
+export async function receiveStock(payload: {
+  mode: "existing" | "new";
+  foto_ref: string;
+  jumlah: number;
+  catatan?: string | null;
+  product_id?: number;
+  nama?: string;
+  sku?: string;
+  satuan?: string;
+  gudang?: string;
+}): Promise<ReceiveResult> {
+  return jsonOrThrow(
+    await apiFetch("/api/stock/receive", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+    "Gagal memperbarui stok",
+  );
+}
+
 export type StreamEvent =
   | { type: "tool"; name: string; arguments: Record<string, unknown> }
   | { type: "token"; text: string }
