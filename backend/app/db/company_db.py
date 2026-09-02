@@ -36,3 +36,13 @@ class CompanyDbGateway:
 
     async def dispose(self) -> None:
         await self._engine.dispose()
+
+
+_gateway: CompanyDbGateway | None = None
+
+
+def get_company_gateway() -> CompanyDbGateway:
+    global _gateway
+    if _gateway is None:
+        _gateway = CompanyDbGateway.from_settings()
+    return _gateway

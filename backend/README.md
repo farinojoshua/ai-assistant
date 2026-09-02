@@ -40,6 +40,20 @@ curl -X POST localhost:8000/api/auth/login \
 curl localhost:8000/api/me -H "Authorization: Bearer <access>"
 ```
 
+### Chat (SSE)
+
+```bash
+curl -N -X POST localhost:8000/api/chat \
+  -H "Authorization: Bearer <access>" \
+  -H 'content-type: application/json' \
+  -d '{"message":"ada berapa total stok flashdisk?"}'
+# event: tool  -> {"name":"cek_stok", ...}
+# event: token -> {"text":"Total stok flashdisk ... 95 pcs"}
+# event: done  -> {"conversation_id":"..."}
+```
+
+Pass `"conversation_id"` from a prior `done` event to continue a conversation.
+
 ## Test
 
 ```bash
