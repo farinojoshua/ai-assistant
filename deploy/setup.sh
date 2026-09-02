@@ -60,6 +60,9 @@ fi
 grep -q '^OLLAMA_API_KEY=.\+' "$ENV_FILE" || { echo "OLLAMA_API_KEY is empty in $ENV_FILE" >&2; exit 1; }
 
 # ---- 4. bundled proxy or host proxy? ----------------------------
+port_busy() { ss -tlnH 2>/dev/null | awk '{print $4}' | grep -qE "(:|\.)$1$"; }
+pick_port() { local p=$1; while port_busy "$p"; do p=$((p+100)); done; echo "$p"; }
+
 PORT80_LINE="$(ss -tlnpH 2>/dev/null | awk '$4 ~ /(:|\.)80$/' | head -1)"
 FILES="-f $COMPOSE_FILE"
 if [ -z "$PORT80_LINE" ]; then
@@ -71,6 +74,15 @@ else
   echo "==> port 80 is served by '${NAME:-another process}' — running behind it"
   BUNDLED=0
 fi
+
+# loopback ports the host proxy will reach (skip ones already in use)
+FRONTEND_PORT="$(grep -oP '^FRONTEND_PORT=\K.*' "$ENV_FILE" 2>/dev/null || true)"
+BACKEND_PORT="$(grep -oP '^BACKEND_PORT=\K.*' "$ENV_FILE" 2>/dev/null || true)"
+[ -n "$FRONTEND_PORT" ] || FRONTEND_PORT="$(pick_port 3000)"
+[ -n "$BACKEND_PORT" ]  || BACKEND_PORT="$(pick_port 8000)"
+grep -q '^FRONTEND_PORT=' "$ENV_FILE" || echo "FRONTEND_PORT=$FRONTEND_PORT" >> "$ENV_FILE"
+grep -q '^BACKEND_PORT='  "$ENV_FILE" || echo "BACKEND_PORT=$BACKEND_PORT"  >> "$ENV_FILE"
+echo "==> loopback ports: frontend=$FRONTEND_PORT backend=$BACKEND_PORT"
 
 # ---- 5. build + start -------------------------------------------
 mkdir -p deploy/certbot/www deploy/certbot/conf
@@ -94,41 +106,53 @@ done
 
 IP="$(curl -fsS4 ifconfig.me 2>/dev/null || echo '<vps-ip>')"
 
+CADDY_SNIPPET=/etc/caddy/ai-assistant.caddy
 if [ "$BUNDLED" != 1 ]; then
-  SITE="$(grep '^CORS_ORIGINS=' "$ENV_FILE" | cut -d= -f2 | cut -d, -f1)"
-  case "$SITE" in http*) ADDR="${SITE#http://}"; ADDR="${ADDR#https://}";; *) ADDR=":80";; esac
-  cat > deploy/Caddyfile.snippet <<EOF
-$ADDR {
+  # site address = whatever users type (keep the scheme so Caddy doesn't
+  # try to get a cert for a bare IP)
+  ADDR="$(grep '^CORS_ORIGINS=' "$ENV_FILE" | cut -d= -f2 | cut -d, -f1)"
+  [ -n "$ADDR" ] || ADDR="http://$IP"
+  BLOCK="$ADDR {
 	encode zstd gzip
 	@api path /api/*
 	handle @api {
-		reverse_proxy 127.0.0.1:8000 {
+		reverse_proxy 127.0.0.1:$BACKEND_PORT {
 			flush_interval -1
 		}
 	}
 	handle {
-		reverse_proxy 127.0.0.1:3000
+		reverse_proxy 127.0.0.1:$FRONTEND_PORT
 	}
 	request_body {
 		max_size 10MB
 	}
-}
-EOF
+}"
+  printf '%s\n' "$BLOCK" > deploy/Caddyfile.snippet
   [ -n "${SUDO_USER:-}" ] && chown "$SUDO_USER":"$SUDO_USER" deploy/Caddyfile.snippet || true
+  # if the host runs Caddy and we can write its config dir, wire it up
+  if command -v caddy >/dev/null 2>&1 && [ -d /etc/caddy ] && [ -w /etc/caddy ]; then
+    printf '%s\n' "$BLOCK" > "$CADDY_SNIPPET"
+    if [ -f /etc/caddy/Caddyfile ] && ! grep -q "import $CADDY_SNIPPET" /etc/caddy/Caddyfile; then
+      echo "import $CADDY_SNIPPET" >> /etc/caddy/Caddyfile
+    fi
+    if caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+      systemctl reload caddy && CADDY_DONE=1
+    fi
+  fi
 fi
 
 echo
 echo "======================================================================"
 if [ "$BUNDLED" = 1 ]; then
   echo " Deployed.   http://$IP"
+elif [ "${CADDY_DONE:-}" = 1 ]; then
+  echo " Deployed & wired into Caddy.   $ADDR"
 else
-  echo " Stack up on 127.0.0.1:3000 / 127.0.0.1:8000."
-  echo
-  echo " 1. add this line to /etc/caddy/Caddyfile:"
-  echo "      import $REPO/deploy/Caddyfile.snippet"
-  echo " 2. sudo systemctl reload caddy"
-  echo
-  echo " (generated block: deploy/Caddyfile.snippet — for site '$ADDR')"
+  echo " Stack up on 127.0.0.1:$FRONTEND_PORT / 127.0.0.1:$BACKEND_PORT."
+  echo " Add to your host proxy — generated block: deploy/Caddyfile.snippet"
+  echo "   Caddy:  sudo cp deploy/Caddyfile.snippet $CADDY_SNIPPET"
+  echo "           echo 'import $CADDY_SNIPPET' | sudo tee -a /etc/caddy/Caddyfile"
+  echo "           sudo systemctl reload caddy"
 fi
 grep -E '^SEED_ADMIN_(EMAIL|PASSWORD)=' "$ENV_FILE" | sed 's/^/   /'
 echo
