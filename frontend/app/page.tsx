@@ -50,8 +50,8 @@ export default function Page() {
 }
 
 function Login({ onDone }: { onDone: () => void }) {
-  const [email, setEmail] = useState("admin@demo.test");
-  const [password, setPassword] = useState("rahasia123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
