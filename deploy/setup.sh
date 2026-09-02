@@ -93,14 +93,42 @@ for _ in $(seq 1 60); do
 done
 
 IP="$(curl -fsS4 ifconfig.me 2>/dev/null || echo '<vps-ip>')"
+
+if [ "$BUNDLED" != 1 ]; then
+  SITE="$(grep '^CORS_ORIGINS=' "$ENV_FILE" | cut -d= -f2 | cut -d, -f1)"
+  case "$SITE" in http*) ADDR="${SITE#http://}"; ADDR="${ADDR#https://}";; *) ADDR=":80";; esac
+  cat > deploy/Caddyfile.snippet <<EOF
+$ADDR {
+	encode zstd gzip
+	@api path /api/*
+	handle @api {
+		reverse_proxy 127.0.0.1:8000 {
+			flush_interval -1
+		}
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+	request_body {
+		max_size 10MB
+	}
+}
+EOF
+  [ -n "${SUDO_USER:-}" ] && chown "$SUDO_USER":"$SUDO_USER" deploy/Caddyfile.snippet || true
+fi
+
 echo
 echo "======================================================================"
 if [ "$BUNDLED" = 1 ]; then
   echo " Deployed.   http://$IP"
 else
-  echo " Stack is up on 127.0.0.1:3000 (frontend) and 127.0.0.1:8000 (backend)."
-  echo " Add a proxy block to your Caddy/nginx config — see deploy/Caddyfile.example"
-  echo " Caddy:  edit /etc/caddy/Caddyfile  then  sudo systemctl reload caddy"
+  echo " Stack up on 127.0.0.1:3000 / 127.0.0.1:8000."
+  echo
+  echo " 1. add this line to /etc/caddy/Caddyfile:"
+  echo "      import $REPO/deploy/Caddyfile.snippet"
+  echo " 2. sudo systemctl reload caddy"
+  echo
+  echo " (generated block: deploy/Caddyfile.snippet — for site '$ADDR')"
 fi
 grep -E '^SEED_ADMIN_(EMAIL|PASSWORD)=' "$ENV_FILE" | sed 's/^/   /'
 echo
