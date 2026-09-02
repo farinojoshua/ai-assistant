@@ -105,6 +105,24 @@ class Reimbursement(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class StockMovement(Base):
+    __tablename__ = "stock_movements"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    aksi: Mapped[str] = mapped_column(String(16))  # masuk | baru
+    product_sku: Mapped[str] = mapped_column(String(100))
+    product_nama: Mapped[str] = mapped_column(String(200))
+    delta_qty: Mapped[int] = mapped_column(Integer)
+    qty_before: Mapped[int] = mapped_column(Integer)
+    qty_after: Mapped[int] = mapped_column(Integer)
+    gudang: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    foto_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    catatan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

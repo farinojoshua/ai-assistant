@@ -66,6 +66,17 @@ async def company_gateway(_company_engine):
 
 
 @pytest_asyncio.fixture
+async def company_writer(_company_engine):
+    """Write-capable company DB; restores the seed after the test so writes
+    don't leak into other tests sharing the session-scoped engine."""
+    from app.db.company_db import CompanyDbWriter
+
+    yield CompanyDbWriter(_company_engine)
+    async with _company_engine.begin() as conn:
+        await conn.exec_driver_sql(_SEED_SQL)
+
+
+@pytest_asyncio.fixture
 async def client(_engine) -> AsyncIterator[AsyncClient]:
     from app.db import app_db
     from app.main import app

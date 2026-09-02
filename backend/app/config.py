@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     company_database_url: str = (
         "postgresql+psycopg://company:company@localhost:5433/company"
     )
+    # narrowly-scoped write user (INSERT/UPDATE on stok_barang only); dev
+    # reuses the same connection
+    company_database_write_url: str = (
+        "postgresql+psycopg://company:company@localhost:5433/company"
+    )
     jwt_secret: str = "dev-secret-change-me"
     jwt_access_ttl_min: int = 30
     jwt_refresh_ttl_days: int = 14
