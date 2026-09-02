@@ -1,5 +1,6 @@
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// dev: set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local
+// prod: leave unset — the browser calls /api/... on the same origin (nginx routes it)
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const ACCESS_KEY = "ai_assistant_token";
 const REFRESH_KEY = "ai_assistant_refresh";
