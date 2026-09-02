@@ -175,12 +175,16 @@ token.
 ### Langkah
 
 1. `app/llm/base.py` —
-   - Dataclass/Pydantic: `Message`, `ToolSpec`, `ToolCall`, `LLMResponse`,
-     `LLMChunk` sesuai spec §3.1.
-   - `class LLMProvider(ABC)` dengan `async def chat(messages, tools, *,
-     stream=False)`.
+   - Pydantic: `Message`, `ToolSpec`, `ToolCall`, `LLMResponse`, `Usage`.
+   - `class LLMProvider(ABC)` dengan `async def chat(messages, tools) ->
+     LLMResponse`. **Streaming dari provider di-drop (YAGNI)** — orchestrator
+     kirim satu `TextEvent` berisi jawaban penuh; SSE route tetap stream
+     event `tool`/`done`. Tambah `stream_chat()` nanti bila perlu.
    - Helper konstruktor: `assistant_tool_calls(tool_calls) -> Message`,
      `tool_result_message(tool_call_id, result: dict) -> Message`.
+   - DONE: `app/llm/openai_compatible.py` menampung translasi bersama
+     (dipakai Ollama Cloud + OpenAI). Test inject mock `httpx.AsyncClient`
+     lewat kwarg `http_client` — respx tidak intercept SDK openai 3.x.
 2. `app/llm/fake.py` — `FakeProvider(script: list[LLMResponse])`:
    tiap panggilan `chat` mengembalikan item berikutnya dari script.
    Merekam `messages` yang diterima (untuk assertion).
@@ -194,7 +198,6 @@ token.
      (parse `arguments` dengan `json.loads`), `finish_reason` →
      `stop_reason` (`tool_calls`→`tool_use`, `stop`→`end_turn`,
      `length`→`max_tokens`).
-   - `stream=True`: yield `LLMChunk` (text delta) + akumulasi tool_calls.
 4. `app/llm/registry.py` — `get_provider(settings)`:
    `match settings.llm_provider` → instance. `ollama_cloud`→Ollama,
    sisanya raise `NotImplementedError` untuk sekarang (diisi Fase 8).
