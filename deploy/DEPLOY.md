@@ -73,27 +73,31 @@ $CF exec backend python scripts/seed_prod.py   # re-run seed
 cd ~/ai-assistant && git pull && sudo bash deploy/setup.sh
 ```
 
-## HTTPS (needs a domain)
+## HTTPS
 
-Camera on phones and secure logins want HTTPS. Point a domain's A record at
-the VPS IP, then:
+Phone-camera uploads and secure logins need HTTPS. Point a subdomain's A
+record at the VPS IP, then:
 
-1. In `deploy/.env`: `CORS_ORIGINS=https://your.domain`
-2. In `deploy/nginx.conf`: `server_name your.domain;`
-3. Issue the cert:
-   ```bash
-   sudo $ENGINE run --rm -p 80:80 \
-     -v "$PWD/deploy/certbot/conf:/etc/letsencrypt" \
-     -v "$PWD/deploy/certbot/www:/var/www/certbot" \
-     docker.io/certbot/certbot certonly --standalone -d your.domain \
-     --agree-tos -m you@email.com --no-eff-email
-   ```
-   (`$ENGINE` = `podman` or `docker`)
-4. Add a `listen 443 ssl;` server block to `deploy/nginx.conf` referencing
-   `/etc/letsencrypt/live/your.domain/{fullchain,privkey}.pem`
-5. `$CF up -d`
+**Behind Caddy (host proxy)** — Caddy issues + auto-renews the cert:
+```bash
+cd ~/ai-assistant
+sed -i 's|^CORS_ORIGINS=.*|CORS_ORIGINS=https://asisten.your-domain.com|' deploy/.env
+sudo sed -i '1s|.*|asisten.your-domain.com {|' /etc/caddy/ai-assistant.caddy
+cd deploy && sudo podman compose -p ai-assistant -f docker-compose.prod.yml down \
+  && sudo podman compose -p ai-assistant -f docker-compose.prod.yml up -d
+sudo systemctl reload caddy        # cert fetched in ~30s
+```
 
-Renewal: monthly cron running `certbot renew` then `$CF exec nginx nginx -s reload`.
+**Bundled nginx** — use certbot:
+```bash
+sudo $ENGINE run --rm -p 80:80 \
+  -v "$PWD/deploy/certbot/conf:/etc/letsencrypt" \
+  -v "$PWD/deploy/certbot/www:/var/www/certbot" \
+  docker.io/certbot/certbot certonly --standalone -d your.domain \
+  --agree-tos -m you@email.com --no-eff-email
+# add a `listen 443 ssl` block to deploy/nginx.conf, then `$CF up -d`
+# renewal: monthly cron: certbot renew && $CF exec nginx nginx -s reload
+```
 
 ## Point at the real company database
 
