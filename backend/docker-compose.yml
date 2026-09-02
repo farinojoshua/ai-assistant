@@ -1,0 +1,27 @@
+# Run with: podman compose up -d
+services:
+  app_db:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - app_db_data:/var/lib/postgresql/data
+
+  company_db:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: company
+      POSTGRES_PASSWORD: company
+      POSTGRES_DB: company
+    ports:
+      - "5433:5432"
+    volumes:
+      - company_db_data:/var/lib/postgresql/data
+
+volumes:
+  app_db_data:
+  company_db_data:

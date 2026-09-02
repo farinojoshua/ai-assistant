@@ -9,3 +9,5 @@ venv/
 .next/
 dist/
 .DS_Store
+*.egg-info/
+.pytest_cache/

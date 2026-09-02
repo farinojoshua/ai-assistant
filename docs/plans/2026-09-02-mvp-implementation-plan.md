@@ -13,12 +13,18 @@
 - Jangan lompat fase. Kalau ada temuan yang mengubah arsitektur, berhenti
   dan update spec dulu.
 
-## Prasyarat
+## Prasyarat (lingkungan dev aktual)
 
-- Python 3.12, `uv` (atau `pip` + venv).
-- Docker (untuk Postgres App DB + Postgres "company" uji).
+- Python 3.14 (`C:\Python314`), `pip` + `venv` (tanpa `uv`).
+- Podman 6.x dengan `podman compose` (shim ke `docker-compose`), machine
+  WSL sudah jalan. Semua perintah `docker compose` di dokumen ini =
+  `podman compose`.
+- DB driver: `psycopg[binary]` (psycopg3) — wheel tersedia untuk 3.14,
+  lebih aman dari `asyncpg`. URL SQLAlchemy: `postgresql+psycopg://...`.
 - Akun Ollama Cloud + API key (untuk verifikasi manual Fase 3; test pakai
   `FakeProvider`).
+- Catatan risiko: Python 3.14 masih baru — bila ada paket tanpa wheel,
+  turunkan ke versi paket terbaru yang mendukung 3.14 atau catat di §11.
 
 ---
 
