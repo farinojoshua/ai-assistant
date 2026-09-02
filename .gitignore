@@ -5,7 +5,7 @@ __pycache__/
 venv/
 .env
 .env.*
-!.env.example
+!*.example
 .next/
 dist/
 .DS_Store
