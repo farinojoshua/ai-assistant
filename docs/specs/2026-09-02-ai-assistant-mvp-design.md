@@ -408,5 +408,7 @@ Detail langkah dibuat di dokumen rencana terpisah. Urutan:
   input `YYYY-MM-DD`. Konfirmasi.
 - Apakah perlu paginasi hasil tool di MVP, atau cukup `LIMIT` + pesan
   "hasil dipotong"? Asumsi: cukup pesan dipotong.
-- Model Ollama Cloud spesifik yang dipakai default (`qwen2.5:72b` vs
-  `llama3.3:70b`) — perlu uji tool-calling singkat sebelum dipilih.
+- ~~Model Ollama Cloud default~~ — **RESOLVED 2026-09-02**: `gpt-oss:120b`.
+  Free tier hanya izinkan model kecil/menengah (`gpt-oss:20b/120b`,
+  `nemotron-3-nano:30b`, `gemma4:31b`); model besar → HTTP 402. `gpt-oss:120b`
+  lulus uji tool-calling (pilih tool + argumen benar).
