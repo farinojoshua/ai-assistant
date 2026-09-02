@@ -20,8 +20,22 @@ podman exec backend-app_db-1 psql -U app -c "CREATE DATABASE app_test;"
 ## Run
 
 ```bash
-./.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000
+./.venv/Scripts/python.exe run.py            # http://127.0.0.1:8000
+./.venv/Scripts/python.exe run.py --reload   # autoreload
 curl http://localhost:8000/health
+```
+
+Use `run.py`, not `uvicorn` directly: uvicorn hardcodes the ProactorEventLoop
+on Windows and `run.py` swaps in the selector loop that psycopg3 needs.
+
+### Auth quick check
+
+```bash
+curl -X POST localhost:8000/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@demo.test","password":"rahasia123"}'
+# -> {"access": "...", "refresh": "...", "token_type": "bearer"}
+curl localhost:8000/api/me -H "Authorization: Bearer <access>"
 ```
 
 ## Test
@@ -35,7 +49,8 @@ with `TEST_APP_DATABASE_URL`.
 
 ## Notes
 
-- psycopg3 async requires the selector event loop on Windows; `app/__init__.py`
-  installs it. The `set_event_loop_policy` deprecation warning (removed in
-  Python 3.16) is known tech debt — revisit when moving to a Linux deploy or
-  Python 3.15.
+- psycopg3 async requires the selector event loop on Windows. `app/__init__.py`
+  sets the policy (covers alembic, scripts, pytest); `run.py` overrides
+  uvicorn's hardcoded ProactorEventLoop factory. The `set_event_loop_policy`
+  deprecation warning (removed in Python 3.16) is known tech debt — revisit
+  when moving to a Linux deploy or Python 3.15.
