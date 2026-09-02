@@ -71,10 +71,16 @@ function Login({ onDone }: { onDone: () => void }) {
   );
 }
 
+const COMMANDS = [
+  { cmd: "reimburse", label: "/reimburse", desc: "Ajukan reimbursement dari foto struk" },
+  { cmd: "help", label: "/help", desc: "Daftar perintah" },
+];
+
 function Chat({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Item[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [menuIdx, setMenuIdx] = useState(0);
   const convId = useRef<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -84,29 +90,37 @@ function Chat({ onLogout }: { onLogout: () => void }) {
 
   const [panel, setPanel] = useState<null | "reimburse">(null);
 
+  const slashMenu =
+    input.startsWith("/") && !input.includes(" ")
+      ? COMMANDS.filter((c) => c.cmd.startsWith(input.slice(1).toLowerCase()))
+      : [];
+
+  function runCommand(cmd: string) {
+    setInput("");
+    if (cmd === "reimburse" || cmd === "reimburst") {
+      setPanel("reimburse");
+    } else if (cmd === "help") {
+      setItems((x) => [
+        ...x,
+        {
+          role: "tool",
+          text: COMMANDS.map((c) => `${c.label} — ${c.desc}`).join("\n"),
+        },
+      ]);
+    } else {
+      setItems((x) => [
+        ...x,
+        { role: "tool", text: `Perintah tidak dikenal: /${cmd}` },
+      ]);
+    }
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
 
     if (text.startsWith("/")) {
-      const cmd = text.slice(1).toLowerCase().split(/\s+/)[0];
-      setInput("");
-      if (cmd === "reimburse" || cmd === "reimburst") {
-        setPanel("reimburse");
-      } else if (cmd === "help") {
-        setItems((x) => [
-          ...x,
-          {
-            role: "tool",
-            text: "Perintah: /reimburse — ajukan reimbursement dari foto struk",
-          },
-        ]);
-      } else {
-        setItems((x) => [
-          ...x,
-          { role: "tool", text: `Perintah tidak dikenal: /${cmd}` },
-        ]);
-      }
+      runCommand(text.slice(1).toLowerCase().split(/\s+/)[0]);
       return;
     }
 
@@ -180,21 +194,62 @@ function Chat({ onLogout }: { onLogout: () => void }) {
         />
       )}
 
-      <div className="composer">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          placeholder="Tulis pertanyaan…  (ketik /reimburse untuk klaim struk)"
-        />
-        <button onClick={send} disabled={busy || !input.trim()}>
-          Kirim
-        </button>
+      <div className="composer-wrap">
+        {slashMenu.length > 0 && (
+          <div className="slash-menu">
+            {slashMenu.map((c, i) => (
+              <button
+                key={c.cmd}
+                className={i === menuIdx ? "active" : ""}
+                onMouseEnter={() => setMenuIdx(i)}
+                onClick={() => runCommand(c.cmd)}
+              >
+                <b>{c.label}</b>
+                <span>{c.desc}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="composer">
+          <textarea
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setMenuIdx(0);
+            }}
+            onKeyDown={(e) => {
+              if (slashMenu.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setMenuIdx((i) => (i + 1) % slashMenu.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setMenuIdx((i) => (i - 1 + slashMenu.length) % slashMenu.length);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  setInput("");
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  runCommand(slashMenu[menuIdx].cmd);
+                  return;
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder="Tulis pertanyaan…  (ketik / untuk perintah)"
+          />
+          <button onClick={send} disabled={busy || !input.trim()}>
+            Kirim
+          </button>
+        </div>
       </div>
     </div>
   );
