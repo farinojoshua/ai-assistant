@@ -16,7 +16,12 @@ type Item = Msg | { role: "tool"; text: string };
 
 export default function Page() {
   const [authed, setAuthed] = useState(false);
-  useEffect(() => setAuthed(!!tokenStore.get()), []);
+  useEffect(() => {
+    setAuthed(!!tokenStore.get());
+    const onExpire = () => setAuthed(false);
+    window.addEventListener("auth:expired", onExpire);
+    return () => window.removeEventListener("auth:expired", onExpire);
+  }, []);
   return authed ? (
     <Chat onLogout={() => { tokenStore.clear(); setAuthed(false); }} />
   ) : (

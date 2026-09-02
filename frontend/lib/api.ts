@@ -1,16 +1,74 @@
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const TOKEN_KEY = "ai_assistant_token";
+const ACCESS_KEY = "ai_assistant_token";
+const REFRESH_KEY = "ai_assistant_refresh";
 
-export const tokenStore = {
-  get: () =>
-    typeof window === "undefined" ? null : localStorage.getItem(TOKEN_KEY),
-  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+const ls = {
+  get: (k: string) =>
+    typeof window === "undefined" ? null : localStorage.getItem(k),
+  set: (k: string, v: string) => localStorage.setItem(k, v),
+  del: (k: string) => localStorage.removeItem(k),
 };
 
-export async function login(email: string, password: string): Promise<string> {
+export const tokenStore = {
+  get: () => ls.get(ACCESS_KEY),
+  set: (access: string, refresh?: string) => {
+    ls.set(ACCESS_KEY, access);
+    if (refresh) ls.set(REFRESH_KEY, refresh);
+  },
+  clear: () => {
+    ls.del(ACCESS_KEY);
+    ls.del(REFRESH_KEY);
+  },
+};
+
+function expire(): never {
+  tokenStore.clear();
+  if (typeof window !== "undefined")
+    window.dispatchEvent(new Event("auth:expired"));
+  throw new Error("Sesi berakhir — silakan login lagi");
+}
+
+async function refreshAccess(): Promise<string> {
+  const refresh = ls.get(REFRESH_KEY);
+  if (!refresh) expire();
+  const res = await fetch(`${API_URL}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ refresh }),
+  });
+  if (!res.ok) expire();
+  const data = await res.json();
+  ls.set(ACCESS_KEY, data.access);
+  return data.access;
+}
+
+/** fetch with bearer auth; on 401 refreshes once and retries. */
+async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const call = (token: string | null) =>
+    fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: { ...init.headers, authorization: `Bearer ${token}` },
+    });
+
+  let res = await call(tokenStore.get());
+  if (res.status === 401) {
+    res = await call(await refreshAccess());
+    if (res.status === 401) expire();
+  }
+  return res;
+}
+
+async function jsonOrThrow<T>(res: Response, fallback: string): Promise<T> {
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? fallback);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function login(email: string, password: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -18,12 +76,7 @@ export async function login(email: string, password: string): Promise<string> {
   });
   if (!res.ok) throw new Error("Email atau password salah");
   const data = await res.json();
-  tokenStore.set(data.access);
-  return data.access;
-}
-
-function authHeaders(): Record<string, string> {
-  return { authorization: `Bearer ${tokenStore.get()}` };
+  tokenStore.set(data.access, data.refresh);
 }
 
 export type OcrResult = {
@@ -39,16 +92,10 @@ export type OcrResult = {
 export async function ocrReceipt(file: File): Promise<OcrResult> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(`${API_URL}/api/reimbursement/ocr`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: fd,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `Gagal membaca struk (${res.status})`);
-  }
-  return res.json();
+  return jsonOrThrow(
+    await apiFetch("/api/reimbursement/ocr", { method: "POST", body: fd }),
+    "Gagal membaca struk",
+  );
 }
 
 export type SubmitResult =
@@ -73,16 +120,14 @@ export async function submitReimbursement(payload: {
   kategori: string | null;
   catatan?: string | null;
 }): Promise<SubmitResult> {
-  const res = await fetch(`${API_URL}/api/reimbursement/submit`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...authHeaders() },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `Gagal mengajukan (${res.status})`);
-  }
-  return res.json();
+  return jsonOrThrow(
+    await apiFetch("/api/reimbursement/submit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+    "Gagal mengajukan",
+  );
 }
 
 export type StreamEvent =
@@ -95,21 +140,11 @@ export async function* streamChat(
   message: string,
   conversationId: string | null,
 ): AsyncGenerator<StreamEvent> {
-  const res = await fetch(`${API_URL}/api/chat`, {
+  const res = await apiFetch("/api/chat", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${tokenStore.get()}`,
-    },
-    body: JSON.stringify({
-      message,
-      conversation_id: conversationId,
-    }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message, conversation_id: conversationId }),
   });
-  if (res.status === 401) {
-    tokenStore.clear();
-    throw new Error("Sesi berakhir, silakan login lagi");
-  }
   if (!res.ok || !res.body) throw new Error(`Gagal: ${res.status}`);
 
   const reader = res.body.getReader();
@@ -130,8 +165,7 @@ export async function* streamChat(
         else if (line.startsWith("data: ")) data = line.slice(6);
       }
       if (!event || !data) continue;
-      const parsed = JSON.parse(data);
-      yield { type: event, ...parsed } as StreamEvent;
+      yield { type: event, ...JSON.parse(data) } as StreamEvent;
     }
   }
 }
