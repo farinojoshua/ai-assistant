@@ -17,7 +17,9 @@ from fastapi.responses import PlainTextResponse
 from app.config import get_settings
 from app.whatsapp.service import (
     already_processed,
+    handle_incoming_image,
     handle_incoming_text,
+    handle_interactive_reply,
     verify_signature,
 )
 
@@ -27,28 +29,52 @@ router = APIRouter(prefix="/api/wa", tags=["whatsapp"])
 
 
 def _dispatch_value(value: dict[str, Any], bg: BackgroundTasks) -> None:
-    """Pull text messages out of one Meta "value" object and queue them.
+    """Pull messages out of one Meta "value" object and queue them.
 
     Shared by the signed Meta webhook and the n8n relay, since n8n forwards
     the same value shape (messaging_product/contacts/messages) it received
-    from Meta. Non-text types (image, document, ...) are skipped for now —
-    WhatsApp media intake isn't wired into the agent yet.
+    from Meta. Text drives the chat agent; images feed the reimbursement OCR
+    flow; interactive replies (button clicks) drive that flow's Kirim/Edit/
+    Batal step. Other types (documents, audio, ...) are skipped for now.
     """
     for msg in value.get("messages", []):
-        if msg.get("type") != "text":
-            logger.info(
-                "whatsapp: skipping unsupported message type %r from %s",
-                msg.get("type"),
-                msg.get("from"),
-            )
-            continue
         mid = msg.get("id", "")
         if mid and already_processed(mid):
             continue
         from_phone = msg.get("from", "")
-        body = (msg.get("text") or {}).get("body", "").strip()
-        if from_phone and body:
-            bg.add_task(handle_incoming_text, from_phone=from_phone, text=body)
+        if not from_phone:
+            continue
+
+        mtype = msg.get("type")
+        if mtype == "text":
+            body = (msg.get("text") or {}).get("body", "").strip()
+            if body:
+                bg.add_task(handle_incoming_text, from_phone=from_phone, text=body)
+        elif mtype == "image":
+            image = msg.get("image") or {}
+            media_id = image.get("id")
+            if media_id:
+                bg.add_task(
+                    handle_incoming_image,
+                    from_phone=from_phone,
+                    media_id=media_id,
+                    caption=image.get("caption"),
+                )
+        elif mtype == "interactive":
+            button = (msg.get("interactive") or {}).get("button_reply") or {}
+            button_id = button.get("id")
+            if button_id:
+                bg.add_task(
+                    handle_interactive_reply,
+                    from_phone=from_phone,
+                    button_id=button_id,
+                )
+        else:
+            logger.info(
+                "whatsapp: skipping unsupported message type %r from %s",
+                mtype,
+                from_phone,
+            )
 
 
 @router.get("/webhook")
