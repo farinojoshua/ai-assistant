@@ -7,10 +7,12 @@ POST /api/wa/webhook  — inbound messages; acked immediately, handled in the
 """
 from __future__ import annotations
 
+import hmac
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Header, Request, Response, status
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.whatsapp.service import (
@@ -67,4 +69,40 @@ async def receive(request: Request, bg: BackgroundTasks) -> Response:
                     )
 
     # Always 200 fast — anything else makes Meta retry the whole batch.
+    return Response(status_code=status.HTTP_200_OK)
+
+
+class RelayMessage(BaseModel):
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    from_: str = Field(alias="from")
+    text: str
+    message_id: str | None = None
+
+
+@router.post("/relay")
+async def relay(
+    msg: RelayMessage,
+    bg: BackgroundTasks,
+    x_relay_token: str = Header(default=""),
+) -> Response:
+    """Accept a message from a trusted forwarder (e.g. n8n) that can't sign
+    like Meta. Auth is a single shared secret header, not a Meta signature.
+    """
+    expected = get_settings().whatsapp_relay_token
+    if not expected or not hmac.compare_digest(x_relay_token, expected):
+        return PlainTextResponse(
+            "unauthorized", status_code=status.HTTP_401_UNAUTHORIZED
+        )
+
+    mid = msg.message_id
+    if mid and already_processed(mid):
+        return Response(status_code=status.HTTP_200_OK)
+
+    from_phone = msg.from_.strip()
+    body = msg.text.strip()
+    if from_phone and body:
+        bg.add_task(
+            handle_incoming_text, from_phone=from_phone, text=body
+        )
     return Response(status_code=status.HTTP_200_OK)

@@ -148,6 +148,26 @@ Notes: outbound free-form messages only work within 24h of the user's last
 message (Meta rule); the webhook acks instantly and runs the agent in the
 background so replies arrive a few seconds later.
 
+### Forwarder path (n8n etc.) — when Meta's webhook is already taken
+
+Meta allows one callback URL per number. If it already points at another
+system, forward from there (or n8n) to `POST /api/wa/relay` instead — no Meta
+signature needed, just a shared secret:
+
+```
+WHATSAPP_RELAY_TOKEN=<invent a long random string>   # in deploy/.env
+```
+
+```bash
+curl -X POST https://asisten.your-domain.com/api/wa/relay \
+  -H 'content-type: application/json' \
+  -H 'X-Relay-Token: <the same string>' \
+  -d '{"from":"6281385226502","text":"total stok flashdisk","message_id":"wamid.optional"}'
+```
+
+`from` = sender's number (digits), `text` = message body, `message_id`
+optional (dedup). The number still has to be linked with `link_wa.py`.
+
 ## Backups
 
 ```bash

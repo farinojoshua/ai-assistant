@@ -16,6 +16,7 @@ def _wa_settings(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "whatsapp_verify_token", "verify-me", raising=False)
     monkeypatch.setattr(s, "whatsapp_app_secret", "", raising=False)
+    monkeypatch.setattr(s, "whatsapp_relay_token", "relay-secret", raising=False)
     # each test starts with a clean dedup ring
     wa_service._seen.clear()
     wa_service._seen_set.clear()
@@ -122,6 +123,34 @@ async def test_bad_signature_rejected(client: AsyncClient, captured, monkeypatch
     )
     assert r.status_code == 403
     assert captured == []
+
+
+async def test_relay_ok(client: AsyncClient, captured):
+    r = await client.post(
+        "/api/wa/relay",
+        json={"from": "628999", "text": "halo"},
+        headers={"X-Relay-Token": "relay-secret"},
+    )
+    assert r.status_code == 200
+    assert captured == [{"from_phone": "628999", "text": "halo"}]
+
+
+async def test_relay_bad_token(client: AsyncClient, captured):
+    r = await client.post(
+        "/api/wa/relay",
+        json={"from": "628999", "text": "halo"},
+        headers={"X-Relay-Token": "nope"},
+    )
+    assert r.status_code == 401
+    assert captured == []
+
+
+async def test_relay_dedup(client: AsyncClient, captured):
+    payload = {"from": "628999", "text": "halo", "message_id": "x1"}
+    h = {"X-Relay-Token": "relay-secret"}
+    await client.post("/api/wa/relay", json=payload, headers=h)
+    await client.post("/api/wa/relay", json=payload, headers=h)
+    assert len(captured) == 1
 
 
 async def test_good_signature_accepted(client: AsyncClient, captured, monkeypatch):

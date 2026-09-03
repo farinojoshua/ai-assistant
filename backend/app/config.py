@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str = ""  # you invent this; must match Meta config
     whatsapp_app_secret: str = ""  # Meta App → Settings → Basic → App Secret
     whatsapp_reply_unregistered: bool = True
+    # shared secret for the /api/wa/relay endpoint (n8n / another forwarder that
+    # can't produce a valid Meta signature). Blank = relay disabled.
+    whatsapp_relay_token: str = ""
 
     # Reimbursement
     upload_dir: str = "uploads"
