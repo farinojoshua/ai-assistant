@@ -34,6 +34,13 @@ _REIMB_BUTTONS = [
     ("reimb_cancel", "Batal"),
 ]
 
+# Free-text ways out of the edit prompt — people type "gajadi deh", not a
+# button tap, when they change their mind mid-flow.
+_CANCEL_WORDS = (
+    "batal", "cancel", "gajadi", "ga jadi", "gak jadi", "tidak jadi",
+    "nggak jadi", "udahlah", "skip", "stop",
+)
+
 # WhatsApp re-delivers webhooks on any non-2xx / timeout. Keep a small ring
 # of message ids we've already handled so retries don't double-answer.
 # Single-process only; a restart forgets them (harmless — worst case one echo).
@@ -188,7 +195,8 @@ async def handle_interactive_reply(*, from_phone: str, button_id: str) -> None:
         await send_text(
             "Ketik koreksinya, format field=nilai dipisah titik-koma.\n"
             "Field: merchant, tanggal (YYYY-MM-DD), nominal, kategori\n"
-            "Contoh: nominal=85000; tanggal=2026-09-03",
+            "Contoh: nominal=85000; tanggal=2026-09-03\n"
+            "Atau ketik 'batal' kalau gajadi.",
             to=phone,
         )
         return
@@ -202,10 +210,17 @@ async def handle_interactive_reply(*, from_phone: str, button_id: str) -> None:
 
 async def _apply_draft_correction(phone: str, text: str) -> None:
     draft = _pending_reimb[phone]
+    normalized = text.strip().lower()
+    if any(w in normalized for w in _CANCEL_WORDS):
+        _pending_reimb.pop(phone, None)
+        await send_text("Oke, dibatalkan.", to=phone)
+        return
+
     parts = [p.strip() for p in text.split(";") if "=" in p]
     if not parts:
         await send_text(
-            "Format tidak dikenali. Contoh: nominal=85000; tanggal=2026-09-03",
+            "Format tidak dikenali. Contoh: nominal=85000; tanggal=2026-09-03\n"
+            "Atau ketik 'batal' untuk membatalkan.",
             to=phone,
         )
         return
