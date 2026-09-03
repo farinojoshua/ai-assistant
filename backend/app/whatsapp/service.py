@@ -18,6 +18,7 @@ from app.db.app_db import get_sessionmaker
 from app.db.models import User, WaContact, WaLocation
 from app.reimbursement import service as reimb_service
 from app.reimbursement.ocr import OcrError, extract_receipt
+from app.whatsapp import ticket_flow
 from app.whatsapp.geocode import reverse_geocode
 from app.whatsapp.media import MediaError, download_media
 from app.whatsapp.send import send_buttons, send_text
@@ -355,6 +356,14 @@ async def handle_incoming_text(*, from_phone: str, text: str) -> None:
         return
 
     user, contact = resolved
+
+    if ticket_flow.is_active(phone):
+        await ticket_flow.handle_text(phone, text, user=user)
+        return
+    if ticket_flow.should_start(text):
+        await ticket_flow.start(phone, user=user)
+        return
+
     try:
         reply, conv_id = await run_chat_turn(
             user=user,

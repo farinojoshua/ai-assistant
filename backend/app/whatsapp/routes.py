@@ -15,6 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, Header, Request, Response, statu
 from fastapi.responses import PlainTextResponse
 
 from app.config import get_settings
+from app.whatsapp import ticket_flow
 from app.whatsapp.service import (
     already_processed,
     handle_incoming_image,
@@ -64,7 +65,13 @@ def _dispatch_value(value: dict[str, Any], bg: BackgroundTasks) -> None:
         elif mtype == "interactive":
             button = (msg.get("interactive") or {}).get("button_reply") or {}
             button_id = button.get("id")
-            if button_id:
+            if button_id and button_id.startswith("ticket_"):
+                bg.add_task(
+                    ticket_flow.handle_button,
+                    phone=from_phone,
+                    button_id=button_id,
+                )
+            elif button_id:
                 bg.add_task(
                     handle_interactive_reply,
                     from_phone=from_phone,

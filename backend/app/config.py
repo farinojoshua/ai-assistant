@@ -76,6 +76,16 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     upload_max_bytes: int = 8 * 1024 * 1024
 
+    # SAMS Studios cinema ticket API (B2B, RSA-signed)
+    sams_base_url: str = "https://dev-api-cos.samsstudios.id/sandbox/merchant/v1.0"
+    sams_client_id: str = ""
+    sams_client_secret: str = ""
+    sams_private_key_path: str = "secrets/sams_private_key.pem"
+    # merchant's own prepaid balance with SAMS — payment/confirm debits this,
+    # it is NOT the end customer's payment method (see ticket_flow.py)
+    sams_wallet_id: str = "00000000-0000-0000-0000-000000000000"
+    sams_partner_prefix: str = "AIASST"
+
 
 @lru_cache
 def get_settings() -> Settings:

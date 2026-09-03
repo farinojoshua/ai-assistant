@@ -13,6 +13,7 @@ dist/
 .pytest_cache/
 backend/evals/last_run.json
 backend/uploads/
+backend/secrets/
 /images.jfif
 /kaleng cat.jpg
 *.jfif
