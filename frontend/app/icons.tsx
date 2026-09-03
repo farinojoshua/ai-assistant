@@ -78,6 +78,12 @@ export const Camera = ({ size = 22, className }: P) => (
   </svg>
 );
 
+export const MessageCircle = ({ size = 16, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+  </svg>
+);
+
 export const X = ({ size = 16, className }: P) => (
   <svg {...base(size)} className={className}>
     <path d="M18 6 6 18M6 6l12 12" />

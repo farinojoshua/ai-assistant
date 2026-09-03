@@ -198,11 +198,16 @@ export type StreamEvent =
 export async function* streamChat(
   message: string,
   conversationId: string | null,
+  notifyWhatsapp = false,
 ): AsyncGenerator<StreamEvent> {
   const res = await apiFetch("/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      notify_whatsapp: notifyWhatsapp,
+    }),
   });
   if (!res.ok || !res.body) throw new Error(`Gagal: ${res.status}`);
 

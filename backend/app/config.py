@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     agent_tool_timeout_s: int = 15
     agent_max_tool_calls_per_turn: int = 8
 
+    # WhatsApp Cloud API
+    # outbound (web chat echo + inbound replies)
+    whatsapp_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_to: str = ""  # default target for the web -> WA echo toggle
+    whatsapp_api_version: str = "v25.0"
+    # inbound webhook
+    whatsapp_verify_token: str = ""  # you invent this; must match Meta config
+    whatsapp_app_secret: str = ""  # Meta App → Settings → Basic → App Secret
+    whatsapp_reply_unregistered: bool = True
+
     # Reimbursement
     upload_dir: str = "uploads"
     upload_max_bytes: int = 8 * 1024 * 1024

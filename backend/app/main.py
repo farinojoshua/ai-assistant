@@ -8,6 +8,7 @@ from app.chat.routes import router as chat_router
 from app.config import get_settings
 from app.reimbursement.routes import router as reimbursement_router
 from app.stock.routes import router as stock_router
+from app.whatsapp.routes import router as whatsapp_router
 
 app = FastAPI(title="AI Assistant Backend")
 app.add_middleware(
@@ -20,6 +21,7 @@ app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(reimbursement_router)
 app.include_router(stock_router)
+app.include_router(whatsapp_router)
 
 
 @app.get("/health")

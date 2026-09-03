@@ -123,6 +123,26 @@ class StockMovement(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class WaContact(Base):
+    """Maps an inbound WhatsApp number to the app user it acts as."""
+
+    __tablename__ = "wa_contacts"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    phone: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE")
+    )
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

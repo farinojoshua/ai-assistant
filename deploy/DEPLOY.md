@@ -112,6 +112,42 @@ company's real DB instead:
    (template: `backend/scripts/seed_company_db.sql`)
 4. `$CF up -d`
 
+## WhatsApp channel
+
+Optional. Lets users chat with the assistant straight from WhatsApp, and/or
+echoes web-chat answers to a number. Needs the site on a public HTTPS domain
+(see above) — Meta only calls an HTTPS webhook.
+
+1. **Meta setup** — App Dashboard → WhatsApp:
+   - *API Setup*: note the **Phone number ID** and generate a permanent
+     **System User** access token.
+   - *Configuration → Webhook*: Callback URL
+     `https://asisten.your-domain.com/api/wa/webhook`, Verify token = a string
+     you invent. Click *Verify and save*, then **Subscribe** to the
+     `messages` field.
+   - *App → Settings → Basic*: copy the **App Secret**.
+
+2. **`deploy/.env`** — fill in and redeploy (`sudo bash deploy/setup.sh`):
+   ```
+   WHATSAPP_TOKEN=<system user token>
+   WHATSAPP_PHONE_NUMBER_ID=<phone number id>
+   WHATSAPP_TO=<default number for the web echo toggle, digits only>
+   WHATSAPP_VERIFY_TOKEN=<same string you gave Meta>
+   WHATSAPP_APP_SECRET=<app secret>
+   ```
+
+3. **Whitelist numbers** — each inbound number must be linked to a user:
+   ```bash
+   $CF exec backend python scripts/link_wa.py --phone 6281385226502 --email admin@demo.test
+   $CF exec backend python scripts/link_wa.py --list
+   $CF exec backend python scripts/link_wa.py --phone 6281385226502 --disable
+   ```
+   Unlisted numbers get a "not registered" reply and are ignored.
+
+Notes: outbound free-form messages only work within 24h of the user's last
+message (Meta rule); the webhook acks instantly and runs the agent in the
+background so replies arrive a few seconds later.
+
 ## Backups
 
 ```bash

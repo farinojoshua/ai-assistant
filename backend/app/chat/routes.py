@@ -17,6 +17,7 @@ from app.db.company_db import get_company_gateway
 from app.chat.schemas import ChatRequest
 from app.llm.registry import get_provider
 from app.tools.base import ToolContext
+from app.whatsapp.send import send_text as wa_send_text
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -86,6 +87,8 @@ async def chat(body: ChatRequest, user: CurrentUser) -> StreamingResponse:
                     session, conv, role="assistant", content=final_text
                 )
             await session.commit()
+            if final_text is not None and body.notify_whatsapp:
+                await wa_send_text(final_text)
             yield _sse("done", {"conversation_id": str(conv.id)})
 
     return StreamingResponse(stream(), media_type="text/event-stream")

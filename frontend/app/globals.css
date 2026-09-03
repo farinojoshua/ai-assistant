@@ -421,6 +421,30 @@ header {
   background: var(--surface);
 }
 
+.wa-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.wa-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.wa-toggle.on {
+  background: #16a34a12;
+  border-color: #16a34a66;
+  color: #15803d;
+}
+
 .composer {
   display: flex;
   align-items: flex-end;

@@ -21,6 +21,7 @@ import {
   Check,
   HelpCircle,
   LogOut,
+  MessageCircle,
   Package,
   Receipt,
   Send,
@@ -142,6 +143,17 @@ function Chat({ onLogout }: { onLogout: () => void }) {
   const [busy, setBusy] = useState(false);
   const [menuIdx, setMenuIdx] = useState(0);
   const [panel, setPanel] = useState<null | "reimburse" | "stok">(null);
+  const [waOn, setWaOn] = useState(false);
+  useEffect(() => {
+    setWaOn(localStorage.getItem("ai_assistant_wa") === "1");
+  }, []);
+  function toggleWa() {
+    setWaOn((v) => {
+      const next = !v;
+      localStorage.setItem("ai_assistant_wa", next ? "1" : "0");
+      return next;
+    });
+  }
   const convId = useRef<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -185,6 +197,7 @@ function Chat({ onLogout }: { onLogout: () => void }) {
       for await (const ev of streamChat(
         text,
         convId.current,
+        waOn,
       ) as AsyncGenerator<StreamEvent>) {
         if (ev.type === "tool") {
           const a = ev.arguments as Record<string, unknown>;
@@ -332,6 +345,19 @@ function Chat({ onLogout }: { onLogout: () => void }) {
             ))}
           </div>
         )}
+        <button
+          type="button"
+          className={`wa-toggle${waOn ? " on" : ""}`}
+          onClick={toggleWa}
+          aria-pressed={waOn}
+          title={
+            waOn
+              ? "Jawaban juga dikirim ke WhatsApp"
+              : "Kirim jawaban ke WhatsApp juga"
+          }
+        >
+          <MessageCircle size={14} /> WhatsApp {waOn ? "on" : "off"}
+        </button>
         <div className="composer">
           <textarea
             value={input}
