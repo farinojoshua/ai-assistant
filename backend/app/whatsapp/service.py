@@ -18,6 +18,7 @@ from app.db.app_db import get_sessionmaker
 from app.db.models import User, WaContact, WaLocation
 from app.reimbursement import service as reimb_service
 from app.reimbursement.ocr import OcrError, extract_receipt
+from app.whatsapp.geocode import reverse_geocode
 from app.whatsapp.media import MediaError, download_media
 from app.whatsapp.send import send_buttons, send_text
 
@@ -200,6 +201,11 @@ async def handle_incoming_location(
 
     user, _contact = resolved
 
+    # WA only gives a name/address when the sender picked a place from
+    # search; a raw dropped-pin share has neither, so fall back to
+    # reverse-geocoding the coordinate ourselves.
+    resolved_address = address or await reverse_geocode(latitude, longitude)
+
     async with get_sessionmaker()() as session:
         session.add(
             WaLocation(
@@ -209,14 +215,14 @@ async def handle_incoming_location(
                 latitude=latitude,
                 longitude=longitude,
                 name=name,
-                address=address,
+                address=resolved_address,
                 message_id=message_id,
             )
         )
         await session.commit()
 
     maps_url = f"https://maps.google.com/?q={latitude},{longitude}"
-    label = name or address or "Lokasi"
+    label = name or resolved_address or "Lokasi"
     await send_text(f"📍 {label} tersimpan.\n{maps_url}", to=phone)
 
 
