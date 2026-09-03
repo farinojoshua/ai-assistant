@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.whatsapp.service import (
     already_processed,
     handle_incoming_image,
+    handle_incoming_location,
     handle_incoming_text,
     handle_interactive_reply,
     verify_signature,
@@ -68,6 +69,19 @@ def _dispatch_value(value: dict[str, Any], bg: BackgroundTasks) -> None:
                     handle_interactive_reply,
                     from_phone=from_phone,
                     button_id=button_id,
+                )
+        elif mtype == "location":
+            loc = msg.get("location") or {}
+            lat, lng = loc.get("latitude"), loc.get("longitude")
+            if lat is not None and lng is not None:
+                bg.add_task(
+                    handle_incoming_location,
+                    from_phone=from_phone,
+                    latitude=lat,
+                    longitude=lng,
+                    name=loc.get("name"),
+                    address=loc.get("address"),
+                    message_id=mid or None,
                 )
         else:
             logger.info(

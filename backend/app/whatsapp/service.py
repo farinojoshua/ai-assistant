@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.chat.service import run_chat_turn
 from app.config import get_settings
 from app.db.app_db import get_sessionmaker
-from app.db.models import User, WaContact
+from app.db.models import User, WaContact, WaLocation
 from app.reimbursement import service as reimb_service
 from app.reimbursement.ocr import OcrError, extract_receipt
 from app.whatsapp.media import MediaError, download_media
@@ -174,6 +174,50 @@ async def handle_incoming_image(
     }
     _pending_reimb[phone] = draft
     await send_buttons(_format_draft(draft), _REIMB_BUTTONS, to=phone)
+
+
+async def handle_incoming_location(
+    *,
+    from_phone: str,
+    latitude: float,
+    longitude: float,
+    name: str | None = None,
+    address: str | None = None,
+    message_id: str | None = None,
+) -> None:
+    """Save a shared location as-is. One row per share, no live tracking."""
+    phone = normalize_phone(from_phone)
+    resolved = await _resolve_contact(phone)
+    if resolved is None:
+        logger.info("whatsapp: unregistered number %s shared a location", phone)
+        if get_settings().whatsapp_reply_unregistered:
+            await send_text(
+                "Nomor ini belum terdaftar untuk memakai asisten. "
+                "Hubungi admin untuk didaftarkan.",
+                to=phone,
+            )
+        return
+
+    user, _contact = resolved
+
+    async with get_sessionmaker()() as session:
+        session.add(
+            WaLocation(
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                phone=phone,
+                latitude=latitude,
+                longitude=longitude,
+                name=name,
+                address=address,
+                message_id=message_id,
+            )
+        )
+        await session.commit()
+
+    maps_url = f"https://maps.google.com/?q={latitude},{longitude}"
+    label = name or address or "Lokasi"
+    await send_text(f"📍 {label} tersimpan.\n{maps_url}", to=phone)
 
 
 async def handle_interactive_reply(*, from_phone: str, button_id: str) -> None:
