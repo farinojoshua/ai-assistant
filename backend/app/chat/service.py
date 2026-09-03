@@ -22,6 +22,7 @@ async def run_chat_turn(
     user: User,
     message: str,
     conversation_id: uuid.UUID | None,
+    channel: str = "web",
 ) -> tuple[str, uuid.UUID]:
     """Run one agent turn, persist it, return ``(reply_text, conversation_id)``."""
     provider = get_provider()
@@ -47,6 +48,7 @@ async def run_chat_turn(
             history=history,
             user_message=message,
             conversation_id=conv.id,
+            channel=channel,
         ):
             if isinstance(ev, TextEvent):
                 final_text = ev.text

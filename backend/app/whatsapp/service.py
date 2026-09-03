@@ -360,6 +360,7 @@ async def handle_incoming_text(*, from_phone: str, text: str) -> None:
             user=user,
             message=text,
             conversation_id=contact.conversation_id,
+            channel="whatsapp",
         )
     except Exception:  # noqa: BLE001
         logger.exception("whatsapp: agent turn failed for %s", phone)

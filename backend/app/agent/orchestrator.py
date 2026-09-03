@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.events import ErrorEvent, Event, TextEvent, ToolEvent
-from app.agent.prompts import SYSTEM_PROMPT
+from app.agent.prompts import SYSTEM_PROMPT, WHATSAPP_FORMAT_NOTE
 from app.audit import service as audit
 from app.config import Settings, get_settings
 from app.llm.base import (
@@ -53,11 +53,15 @@ async def run_turn(
     user_message: str,
     conversation_id: uuid.UUID | None = None,
     settings: Settings | None = None,
+    channel: str = "web",
 ) -> AsyncIterator[Event]:
     settings = settings or get_settings()
     schema = await format_for_prompt(ctx.db)
+    system_content = f"{SYSTEM_PROMPT}\n\n{schema}"
+    if channel == "whatsapp":
+        system_content += WHATSAPP_FORMAT_NOTE
     messages: list[Message] = [
-        Message(role="system", content=f"{SYSTEM_PROMPT}\n\n{schema}"),
+        Message(role="system", content=system_content),
         *history,
         Message(role="user", content=user_message),
     ]

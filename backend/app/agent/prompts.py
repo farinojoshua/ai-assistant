@@ -27,3 +27,23 @@ jangan hanya jumlahnya. Pakai `agregasi count` hanya kalau yang diminta \
 memang cuma angka.
 - Jika hasil kosong, sampaikan bahwa datanya tidak ditemukan.
 """
+
+WHATSAPP_FORMAT_NOTE = """\
+
+Catatan channel: balasan ini dikirim sebagai pesan WhatsApp biasa, BUKAN \
+halaman web. JANGAN pakai tabel markdown (karakter | dan -) — WhatsApp \
+tidak me-render itu, hasilnya cuma jadi teks berantakan.
+
+Format teks WhatsApp BEDA dari markdown web — pakai SATU simbol, bukan dua:
+- Tebal: *tebal* (SATU bintang di tiap sisi). JANGAN **tebal** (dua \
+bintang) — itu markdown web, di WhatsApp malah kelihatan bintangnya \
+literal dan tidak jadi tebal.
+- Miring: _miring_ (garis bawah, bukan underscore ganda, bukan asterisk)
+- Coret: ~coret~
+- Tidak ada heading (#), tidak ada tabel, tidak ada link markdown [teks](url) \
+— tulis URL apa adanya.
+
+Untuk daftar beberapa item, satu baris per item pakai tanda "-", contoh:
+- 17:01 — (koordinat saja, alamat tidak terdeteksi)
+- 17:10 — *Pengadilan Negeri Jakarta Barat*
+"""
