@@ -133,6 +133,10 @@ async def list_upcoming() -> list[dict]:
     return await _request("GET", "/public/list/up-coming")
 
 
+async def list_disclaimer() -> list[dict]:
+    return await _request("GET", "/public/list/disclaimer")
+
+
 async def list_cinemas(city_id: str) -> list[dict]:
     return await _request("POST", "/public/list/cinema", {"city_id": city_id})
 
@@ -205,4 +209,6 @@ async def confirm_payment(
 
 
 async def payment_history(customer_id: str) -> list[dict]:
-    return await _request("POST", "/payment/history", {"customer_id": customer_id})
+    # PDF spec says "/payment/history"; the corrected Postman collection
+    # (and live sandbox) actually uses "/ticket/payment/history".
+    return await _request("POST", "/ticket/payment/history", {"customer_id": customer_id})
