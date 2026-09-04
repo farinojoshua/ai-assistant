@@ -34,7 +34,13 @@ from app.whatsapp.send import send_buttons, send_text
 logger = logging.getLogger(__name__)
 
 _TZ = ZoneInfo("Asia/Jakarta")
-_TRIGGER_WORDS = ("tiket", "nonton", "bioskop")
+# Phrases, not single words — a bare "bioskop"/"nonton"/"tiket" also shows up
+# in plain questions like "film apa yang tayang di bioskop?", which should
+# reach the chat agent (film_bioskop tool), not hijack into this flow.
+_TRIGGER_PHRASES = (
+    "pesan tiket", "pesen tiket", "beli tiket", "booking tiket", "order tiket",
+    "mau nonton", "pengen nonton", "ingin nonton", "mau ke bioskop",
+)
 _CANCEL_WORDS = ("batal", "cancel", "gajadi", "ga jadi", "gak jadi", "tidak jadi", "nggak jadi", "stop")
 
 _pending: dict[str, dict[str, Any]] = {}
@@ -50,7 +56,7 @@ def _rp(n: float) -> str:
 
 def should_start(text: str) -> bool:
     t = text.strip().lower()
-    return any(w in t for w in _TRIGGER_WORDS)
+    return any(p in t for p in _TRIGGER_PHRASES)
 
 
 def is_active(phone: str) -> bool:

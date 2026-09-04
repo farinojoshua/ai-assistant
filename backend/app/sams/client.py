@@ -93,8 +93,11 @@ async def _get_access_token() -> str:
         {"client_id": settings.sams_client_id, "client_secret": settings.sams_client_secret},
         with_auth=False,
     )
-    token = payload["accessToken"]
-    ttl = int(payload.get("expiresIn", 900))
+    # The PDF spec sample uses "accessToken"/"expiresIn"; the sandbox's own
+    # Postman collection test script reads "access_token" instead — accept
+    # either since the two disagree.
+    token = payload.get("accessToken") or payload["access_token"]
+    ttl = int(payload.get("expiresIn") or payload.get("expires_in") or 900)
     _token_cache["token"] = token
     _token_cache["expires_at"] = now + max(ttl - 60, 30)  # refresh 60s early
     return token
@@ -112,6 +115,22 @@ def customer_id_for(user_id: uuid.UUID) -> str:
 
 async def list_cities() -> list[dict]:
     return await _request("GET", "/public/list/city")
+
+
+async def list_movies() -> list[dict]:
+    return await _request("GET", "/public/list/movie")
+
+
+async def get_movie(movie_id: str) -> dict:
+    return await _request("POST", "/public/get/movie", {"movie_id": movie_id})
+
+
+async def list_now_playing() -> list[dict]:
+    return await _request("GET", "/public/list/now-playing")
+
+
+async def list_upcoming() -> list[dict]:
+    return await _request("GET", "/public/list/up-coming")
 
 
 async def list_cinemas(city_id: str) -> list[dict]:

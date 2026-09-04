@@ -4,9 +4,10 @@ from app.llm.base import ToolSpec
 from app.tools.ambil_data import AmbilData
 from app.tools.base import Tool
 from app.tools.daftar_data import DaftarData
+from app.tools.film_bioskop import FilmBioskop
 from app.tools.riwayat_lokasi import RiwayatLokasi
 
-_TOOLS: list[Tool] = [DaftarData(), AmbilData(), RiwayatLokasi()]
+_TOOLS: list[Tool] = [DaftarData(), AmbilData(), RiwayatLokasi(), FilmBioskop()]
 
 _BY_NAME: dict[str, Tool] = {t.name: t for t in _TOOLS}
 
