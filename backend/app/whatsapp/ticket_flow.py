@@ -18,6 +18,7 @@ chatting. That's intentionally out of scope for this pass.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -76,7 +77,7 @@ async def _fail(phone: str, e: SamsApiError, context: str) -> None:
     )
 
 
-async def start(phone: str, *, user: User) -> None:
+async def start(phone: str, text: str, *, user: User) -> None:
     try:
         cities = await sams.list_cities()
     except SamsApiError as e:
@@ -85,12 +86,25 @@ async def start(phone: str, *, user: User) -> None:
 
     active = [c for c in cities if c.get("is_active")]
     options = active[:15]
-    _pending[phone] = {
+    state = {
         "step": "city",
         "user_id": str(user.id),
         "tenant_id": str(user.tenant_id),
         "cities": options,
+        # remembered so later steps don't re-ask something already said
+        # up front, e.g. "mau nonton hari ini" — see _remember_date_hint
+        "seed_text": text,
     }
+    _remember_date_hint(state, text)
+    _pending[phone] = state
+
+    # named the city up front too ("mau nonton di Sukabumi hari ini")? skip
+    # straight past the city question.
+    seed_city = _find_in_text(text, options, "city_name")
+    if seed_city is not None:
+        await _proceed_after_city(phone, state, seed_city)
+        return
+
     lines = [f"{i+1}. {c['city_name']}" for i, c in enumerate(options)]
     await send_text(
         "🎬 Mau nonton di kota mana? Ketik nomor atau nama kotanya:\n" + "\n".join(lines),
@@ -98,7 +112,19 @@ async def start(phone: str, *, user: User) -> None:
     )
 
 
+def _remember_date_hint(state: dict, text: str) -> None:
+    """If a date was already mentioned (e.g. "mau nonton hari ini"), stash it
+    so the date step is skipped later instead of asking again."""
+    if "date" in state:
+        return
+    d = _parse_date_anywhere(text)
+    if d is not None:
+        state["date"] = d.isoformat()
+
+
 def _match(text: str, options: list[dict], name_key: str) -> dict | None:
+    """A direct reply to a "pick one" prompt — a number, or the option's
+    name (possibly a fragment of it)."""
     t = text.strip().lower()
     if t.isdigit():
         idx = int(t) - 1
@@ -109,6 +135,15 @@ def _match(text: str, options: list[dict], name_key: str) -> dict | None:
         if t == o[name_key].strip().lower():
             return o
     matches = [o for o in options if t in o[name_key].strip().lower()]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _find_in_text(text: str, options: list[dict], name_key: str) -> dict | None:
+    """The reverse: scan free text for a mention of one option's name — for
+    picking up "mau nonton di Sukabumi hari ini" from the message that
+    kicked the flow off, not a direct one-word reply to a prompt."""
+    t = text.strip().lower()
+    matches = [o for o in options if o[name_key].strip().lower() in t]
     return matches[0] if len(matches) == 1 else None
 
 
@@ -149,6 +184,10 @@ async def _step_city(phone: str, text: str, state: dict) -> None:
     if city is None:
         await send_text("Kota tidak ditemukan. Coba ketik ulang nama/nomor kotanya, atau 'batal'.", to=phone)
         return
+    await _proceed_after_city(phone, state, city)
+
+
+async def _proceed_after_city(phone: str, state: dict, city: dict) -> None:
     try:
         cinemas = await sams.list_cinemas(city["city_id"])
     except SamsApiError as e:
@@ -156,11 +195,22 @@ async def _step_city(phone: str, text: str, state: dict) -> None:
         return
     if not cinemas:
         await send_text(f"Belum ada bioskop terdaftar di {city['city_name']}. Ketik kota lain atau 'batal'.", to=phone)
+        state["step"] = "city"
         return
 
     state["city_id"] = city["city_id"]
     state["city_name"] = city["city_name"]
     state["cinemas"] = cinemas
+
+    # already named the cinema in the original message ("mau nonton di SAMS
+    # Cibadak")? skip the cinema question too, not just the date one.
+    seed_cinema = _find_in_text(state.get("seed_text", ""), cinemas, "cinema_name")
+    if seed_cinema is not None:
+        state["cinema_id"] = seed_cinema["cinema_id"]
+        state["cinema_name"] = seed_cinema["cinema_name"]
+        await _proceed_after_cinema(phone, state)
+        return
+
     state["step"] = "cinema"
     lines = [f"{i+1}. {c['cinema_name']} — {c.get('cinema_address', '-')}" for i, c in enumerate(cinemas)]
     await send_text("Pilih bioskopnya:\n" + "\n".join(lines), to=phone)
@@ -173,6 +223,15 @@ async def _step_cinema(phone: str, text: str, state: dict) -> None:
         return
     state["cinema_id"] = cinema["cinema_id"]
     state["cinema_name"] = cinema["cinema_name"]
+    await _proceed_after_cinema(phone, state)
+
+
+async def _proceed_after_cinema(phone: str, state: dict) -> None:
+    """Cinema is known — go straight to showtimes if a date was already
+    mentioned up front, otherwise ask for one."""
+    if "date" in state:
+        await _fetch_and_show_showtimes(phone, state, date.fromisoformat(state["date"]))
+        return
     state["step"] = "date"
     await send_text(
         "Mau nonton tanggal berapa? Ketik 'hari ini', 'besok', atau format YYYY-MM-DD.",
@@ -180,7 +239,12 @@ async def _step_cinema(phone: str, text: str, state: dict) -> None:
     )
 
 
+_DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
+
+
 def _parse_date(text: str) -> date | None:
+    """Strict: the whole message must be a date phrase — for a direct
+    reply to "tanggal berapa?"."""
     t = text.strip().lower()
     today = datetime.now(_TZ).date()
     if t in ("hari ini", "sekarang", "today"):
@@ -195,11 +259,35 @@ def _parse_date(text: str) -> date | None:
         return None
 
 
+def _parse_date_anywhere(text: str) -> date | None:
+    """Loose: a date phrase mentioned anywhere in free text — for picking up
+    "mau nonton hari ini" from the message that kicked the flow off."""
+    t = text.strip().lower()
+    today = datetime.now(_TZ).date()
+    if "hari ini" in t or "sekarang" in t:
+        return today
+    if "besok" in t:
+        return today + timedelta(days=1)
+    if "lusa" in t:
+        return today + timedelta(days=2)
+    m = _DATE_RE.search(t)
+    if m:
+        try:
+            return date.fromisoformat(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
 async def _step_date(phone: str, text: str, state: dict) -> None:
     d = _parse_date(text)
     if d is None:
         await send_text("Format tanggal gak dikenali. Contoh: 'besok' atau '2026-09-10'.", to=phone)
         return
+    await _fetch_and_show_showtimes(phone, state, d)
+
+
+async def _fetch_and_show_showtimes(phone: str, state: dict, d: date) -> None:
     try:
         showtimes = await sams.list_showtimes(state["cinema_id"], d.isoformat())
     except SamsApiError as e:
@@ -209,6 +297,8 @@ async def _step_date(phone: str, text: str, state: dict) -> None:
                 "Coba tanggal lain atau ketik 'batal'.",
                 to=phone,
             )
+            state["step"] = "date"
+            state.pop("date", None)
             return
         await _fail(phone, e, "daftar jadwal")
         return

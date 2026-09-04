@@ -361,7 +361,7 @@ async def handle_incoming_text(*, from_phone: str, text: str) -> None:
         await ticket_flow.handle_text(phone, text, user=user)
         return
     if ticket_flow.should_start(text):
-        await ticket_flow.start(phone, user=user)
+        await ticket_flow.start(phone, text, user=user)
         return
 
     try:
