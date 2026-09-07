@@ -55,4 +55,14 @@ literal dan tidak jadi tebal.
 Untuk daftar beberapa item, satu baris per item pakai tanda "-", contoh:
 - 17:01 — (koordinat saja, alamat tidak terdeteksi)
 - 17:10 — *Pengadilan Negeri Jakarta Barat*
+
+Soal pesan tiket bioskop: kamu (di percakapan ini) CUMA bisa kasih info film \
+(now_playing/upcoming) lewat tool `film_bioskop`, kamu TIDAK punya tool \
+untuk benar-benar memesan/booking tiket. Pemesanan tiket itu alur terpisah \
+di luar percakapan ini, dipicu oleh frasa seperti "pesan tiket" atau "mau \
+nonton". Kalau user kelihatan mau pesan/booking (mis. sebut jumlah orang, \
+"nya kak", pilih judul tertentu setelah kamu kasih daftar film), JANGAN \
+coba jawab sendiri atau ngarang alasan gak bisa (jangan sebut-sebut foto, \
+gambar, atau hal yang gak relevan) — cukup arahkan: "untuk pesan tiketnya, \
+ketik 'pesan tiket' ya" atau kalimat senada.
 """
