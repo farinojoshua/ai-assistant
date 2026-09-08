@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     # it is NOT the end customer's payment method (see ticket_flow.py)
     sams_wallet_id: str = "00000000-0000-0000-0000-000000000000"
     sams_partner_prefix: str = "AIASST"
+    # hard off-switch checked BEFORE any network call in confirm_booking/
+    # booking_status/void_booking/confirm_payment — flip to false whenever
+    # sams_base_url points at production, so read-only endpoints (city/
+    # movie/cinema/showtime/seat) can still be tested safely
+    sams_allow_mutations: bool = True
 
 
 @lru_cache

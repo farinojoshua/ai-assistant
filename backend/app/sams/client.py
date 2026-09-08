@@ -32,6 +32,27 @@ class SamsApiError(Exception):
         super().__init__(f"{code}: {message}")
 
 
+class MutationsDisabledError(Exception):
+    """Raised instead of ever making the HTTP call — see _guard_mutation."""
+
+
+def _guard_mutation(name: str) -> None:
+    """Hard stop for booking/status/void/payment — checked BEFORE any
+    network call, network call is never attempted when this is off.
+
+    Flips on SAMS_ALLOW_MUTATIONS=false. Used to test read-only endpoints
+    (city/movie/cinema/showtime/seat) against a real production
+    credential without any risk of holding a real seat, touching a real
+    booking, or debiting the real wallet.
+    """
+    if not get_settings().sams_allow_mutations:
+        raise MutationsDisabledError(
+            f"{name} diblokir — SAMS_ALLOW_MUTATIONS=false (mode aman, "
+            "kemungkinan lagi nunjuk ke production). Set ke true kalau "
+            "memang mau benar-benar booking/void/bayar."
+        )
+
+
 _token_cache: dict[str, Any] = {"token": None, "expires_at": 0.0}
 
 
@@ -156,6 +177,7 @@ async def list_seats(showtime_id: str) -> dict:
 async def confirm_booking(
     *, showtime_id: str, studio_seat_id: list[str], partner_reference_number: str, customer_id: str
 ) -> dict:
+    _guard_mutation("confirm_booking")
     return await _request(
         "POST",
         "/ticket/booking/confirm",
@@ -169,6 +191,7 @@ async def confirm_booking(
 
 
 async def booking_status(*, showtime_id: str, partner_reference_number: str) -> dict:
+    _guard_mutation("booking_status")
     return await _request(
         "POST",
         "/ticket/booking/status",
@@ -179,6 +202,7 @@ async def booking_status(*, showtime_id: str, partner_reference_number: str) -> 
 async def void_booking(
     *, booking_id: str, partner_reference_number: str, customer_id: str, wallet_id: str | None = None
 ) -> dict:
+    _guard_mutation("void_booking")
     settings = get_settings()
     return await _request(
         "POST",
@@ -195,6 +219,7 @@ async def void_booking(
 async def confirm_payment(
     *, booking_id: str, partner_reference_number: str, customer_id: str, wallet_id: str | None = None
 ) -> dict:
+    _guard_mutation("confirm_payment")
     settings = get_settings()
     return await _request(
         "POST",
