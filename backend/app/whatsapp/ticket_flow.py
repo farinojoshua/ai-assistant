@@ -476,6 +476,16 @@ async def _step_movie(phone: str, text: str, state: dict) -> None:
     await _show_showtime_choices(phone, state)
 
 
+_TIME_RE = re.compile(r"\b([01]?\d|2[0-3])[.:]([0-5]\d)\b")
+
+
+def _parse_time(text: str) -> str | None:
+    m = _TIME_RE.search(text)
+    if not m:
+        return None
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
 async def _step_showtime(phone: str, text: str, state: dict) -> None:
     t = text.strip()
     showtime = None
@@ -483,6 +493,18 @@ async def _step_showtime(phone: str, text: str, state: dict) -> None:
         idx = int(t) - 1
         if 0 <= idx < len(state["showtimes_for_movie"]):
             showtime = state["showtimes_for_movie"][idx]
+    if showtime is None:
+        # "jam 15.50 boleh deh" — answered with the time shown, not its
+        # list number.
+        wanted = _parse_time(t)
+        if wanted:
+            matches = [
+                s
+                for s in state["showtimes_for_movie"]
+                if (s.get("showtime_start") or "")[-8:-3] == wanted
+            ]
+            if len(matches) == 1:
+                showtime = matches[0]
     if showtime is None:
         await send_text("Nomor jadwal gak ditemukan. Coba ketik ulang, atau 'batal'.", to=phone)
         return
