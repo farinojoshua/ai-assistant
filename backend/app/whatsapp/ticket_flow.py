@@ -163,12 +163,25 @@ def _match(text: str, options: list[dict], name_key: str) -> dict | None:
     for o in options:
         if t == o[name_key].strip().lower():
             return o
-    matches = [
+    whole = [
         o
         for o in options
         if t in o[name_key].strip().lower() or o[name_key].strip().lower() in t
     ]
-    return matches[0] if len(matches) == 1 else None
+    if len(whole) == 1:
+        return whole[0]
+    # "cibadak boleh" doesn't contain the full "sams cibadak" as a
+    # substring either direction — fall back to word overlap so a
+    # distinctive word from the name (skip short/common ones like "sams")
+    # matching a word in the reply is enough.
+    t_words = set(re.findall(r"\w+", t))
+    word_matches = [
+        o
+        for o in options
+        if {w for w in re.findall(r"\w+", o[name_key].strip().lower()) if len(w) >= 4}
+        & t_words
+    ]
+    return word_matches[0] if len(word_matches) == 1 else None
 
 
 def _find_in_text(text: str, options: list[dict], name_key: str) -> dict | None:
