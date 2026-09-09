@@ -30,7 +30,8 @@ from app.db.app_db import get_sessionmaker
 from app.db.models import TicketBooking, User
 from app.sams import client as sams
 from app.sams.client import MutationsDisabledError, SamsApiError
-from app.whatsapp.send import send_buttons, send_text
+from app.whatsapp.seatmap import render_seat_map
+from app.whatsapp.send import send_buttons, send_image, send_text
 
 logger = logging.getLogger(__name__)
 
@@ -452,6 +453,18 @@ async def _step_showtime(phone: str, text: str, state: dict) -> None:
     state["showtime_price"] = showtime["showtime_price"]
     state["seat_map"] = seat_map
     state["step"] = "seats"
+
+    jam = (showtime.get("showtime_start") or "")[-8:-3]
+    try:
+        image_bytes = render_seat_map(
+            seat_payload.get("show_time_seat", []),
+            title=showtime["movie_name"],
+            subtitle=f"{state['cinema_name']} — {jam}",
+        )
+        await send_image(image_bytes, "Hijau = tersedia, merah = terisi", to=phone)
+    except Exception:  # noqa: BLE001 - the text list below still works without it
+        logger.exception("ticket_flow: gagal render/kirim gambar peta kursi")
+
     await send_text(
         "Kursi tersedia (kode kursi per baris):\n" + "\n".join(rows_text) +
         "\n\nKetik kode kursi yang mau dipesan, pisahkan dengan koma. Contoh: G14,G15",

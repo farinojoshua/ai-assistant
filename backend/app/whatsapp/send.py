@@ -89,3 +89,40 @@ async def send_buttons(body: str, buttons: list[tuple[str, str]], to: str) -> No
             )
     except Exception:  # noqa: BLE001 - delivery is best-effort
         logger.exception("whatsapp send_buttons error")
+
+
+async def send_image(image_bytes: bytes, caption: str, to: str) -> None:
+    """Upload image bytes to WA's media endpoint, then send it as an image
+    message. Two calls — the Cloud API doesn't accept inline image data."""
+    s = get_settings()
+    if not is_configured():
+        return
+    base = f"https://graph.facebook.com/{s.whatsapp_api_version}/{s.whatsapp_phone_number_id}"
+    headers = {"Authorization": f"Bearer {s.whatsapp_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            upload = await client.post(
+                f"{base}/media",
+                headers=headers,
+                data={"messaging_product": "whatsapp", "type": "image/png"},
+                files={"file": ("seatmap.png", image_bytes, "image/png")},
+            )
+            if upload.status_code >= 400:
+                logger.warning("whatsapp media upload failed %s: %s", upload.status_code, upload.text)
+                return
+            media_id = upload.json()["id"]
+
+            resp = await client.post(
+                f"{base}/messages",
+                headers=headers,
+                json={
+                    "messaging_product": "whatsapp",
+                    "to": to,
+                    "type": "image",
+                    "image": {"id": media_id, "caption": caption[:1024]},
+                },
+            )
+        if resp.status_code >= 400:
+            logger.warning("whatsapp send_image failed %s: %s", resp.status_code, resp.text)
+    except Exception:  # noqa: BLE001 - delivery is best-effort
+        logger.exception("whatsapp send_image error")
