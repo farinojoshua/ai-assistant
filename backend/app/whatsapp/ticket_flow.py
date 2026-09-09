@@ -29,7 +29,7 @@ from sqlalchemy import select
 from app.db.app_db import get_sessionmaker
 from app.db.models import TicketBooking, User
 from app.sams import client as sams
-from app.sams.client import SamsApiError
+from app.sams.client import MutationsDisabledError, SamsApiError
 from app.whatsapp.send import send_buttons, send_text
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,20 @@ async def _fail(phone: str, e: SamsApiError, context: str) -> None:
     logger.warning("sams api error during %s: %s", context, e)
     await send_text(
         f"Maaf, layanan tiket lagi bermasalah ({context}): {e.message}. Coba lagi nanti atau ketik 'batal'.",
+        to=phone,
+    )
+
+
+async def _mutations_disabled_reply(phone: str, context: str) -> None:
+    """confirm_booking/confirm_payment/void_booking are hard-disabled
+    (SAMS_ALLOW_MUTATIONS=false, e.g. while pointed at production
+    read-only) — say so instead of leaving the user on read with no
+    reply at all, which is what an uncaught MutationsDisabledError does."""
+    logger.warning("ticket_flow: mutation blocked during %s for %s", context, phone)
+    await send_text(
+        "Maaf, pemesanan tiket lagi belum bisa diselesaikan sampai ke booking/bayar "
+        "(sedang mode uji coba read-only). Kamu masih bisa cek film & jadwal, "
+        "tapi belum bisa checkout dulu. Ketik 'batal' untuk keluar.",
         to=phone,
     )
 
@@ -425,6 +439,9 @@ async def _confirm_booking(phone: str, state: dict) -> None:
             partner_reference_number=state["partner_reference_number"],
             customer_id=customer_id,
         )
+    except MutationsDisabledError:
+        await _mutations_disabled_reply(phone, "confirm_booking")
+        return
     except SamsApiError as e:
         if e.code == "4090001":  # Some Seat Already Booked
             await send_text(
@@ -475,6 +492,9 @@ async def _confirm_payment(phone: str, state: dict) -> None:
             partner_reference_number=state["partner_reference_number"],
             customer_id=state["sams_customer_id"],
         )
+    except MutationsDisabledError:
+        await _mutations_disabled_reply(phone, "confirm_payment")
+        return
     except SamsApiError as e:
         await _fail(phone, e, "pembayaran")
         return
@@ -512,6 +532,9 @@ async def _void(phone: str, state: dict) -> None:
             partner_reference_number=state["partner_reference_number"],
             customer_id=state["sams_customer_id"],
         )
+    except MutationsDisabledError:
+        await _mutations_disabled_reply(phone, "void_booking")
+        return
     except SamsApiError as e:
         await _fail(phone, e, "pembatalan booking")
         return
