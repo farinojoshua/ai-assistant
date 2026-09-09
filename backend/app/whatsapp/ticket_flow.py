@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import uuid
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -52,6 +53,14 @@ _DESIRE_WORDS = ("mau", "pesan", "pesen", "pengen", "ingin", "dong", "boleh")
 
 _pending: dict[str, dict[str, Any]] = {}
 
+# Flat city+cinema list, cached — a user often names the specific branch
+# ("Cibadak") rather than the city it's in ("Sukabumi"), and there's no way
+# to know which city a cinema belongs to without having fetched all of
+# them at least once. Cinema rosters don't change minute to minute, so a
+# TTL cache beats a fresh multi-city fetch on every unmatched reply.
+_cinema_cache: dict[str, Any] = {"data": None, "expires_at": 0.0}
+_CINEMA_CACHE_TTL_S = 1800
+
 
 def _normalize_phone(raw: str) -> str:
     return "".join(ch for ch in raw if ch.isdigit())
@@ -59,6 +68,28 @@ def _normalize_phone(raw: str) -> str:
 
 def _rp(n: float) -> str:
     return f"Rp{n:,.0f}".replace(",", ".")
+
+
+async def _all_cinemas() -> list[dict]:
+    now = time.monotonic()
+    if _cinema_cache["data"] is not None and now < _cinema_cache["expires_at"]:
+        return _cinema_cache["data"]
+
+    cities = await sams.list_cities()
+    flat: list[dict] = []
+    for city in cities:
+        if not city.get("is_active"):
+            continue
+        try:
+            cinemas = await sams.list_cinemas(city["city_id"])
+        except SamsApiError:
+            continue
+        for cinema in cinemas:
+            flat.append({**cinema, "city_id": city["city_id"], "city_name": city["city_name"]})
+
+    _cinema_cache["data"] = flat
+    _cinema_cache["expires_at"] = now + _CINEMA_CACHE_TTL_S
+    return flat
 
 
 def should_start(text: str) -> bool:
@@ -132,6 +163,13 @@ async def start(phone: str, text: str, *, user: User) -> None:
     seed_city = _find_in_text(text, options, "city_name")
     if seed_city is not None:
         await _proceed_after_city(phone, state, seed_city)
+        return
+
+    # or named the specific branch directly ("mau nonton di Cibadak") —
+    # search nationally, same as the city step's fallback.
+    seed_cinema = _find_in_text(text, await _all_cinemas(), "cinema_name")
+    if seed_cinema is not None:
+        await _jump_to_cinema(phone, state, seed_cinema)
         return
 
     lines = [f"{i+1}. {c['city_name']}" for i, c in enumerate(options)]
@@ -230,10 +268,32 @@ async def handle_text(phone: str, text: str, *, user: User) -> None:
 
 async def _step_city(phone: str, text: str, state: dict) -> None:
     city = _match(text, state["cities"], "city_name")
-    if city is None:
-        await send_text("Kota tidak ditemukan. Coba ketik ulang nama/nomor kotanya, atau 'batal'.", to=phone)
+    if city is not None:
+        await _proceed_after_city(phone, state, city)
         return
-    await _proceed_after_city(phone, state, city)
+
+    # not a city name — maybe they named the specific branch instead
+    # ("Cibadak" is a cinema, the city is "Sukabumi"). Search nationally.
+    cinema = _match(text, await _all_cinemas(), "cinema_name")
+    if cinema is not None:
+        await _jump_to_cinema(phone, state, cinema)
+        return
+
+    await send_text("Kota tidak ditemukan. Coba ketik ulang nama/nomor kotanya, atau 'batal'.", to=phone)
+
+
+async def _jump_to_cinema(phone: str, state: dict, cinema: dict) -> None:
+    """cinema came from the national _all_cinemas() search, so both the
+    city and the exact branch are already known — skip straight past both
+    questions to whatever comes after (date, or showtimes if the date was
+    also given up front)."""
+    all_cinemas = await _all_cinemas()
+    state["city_id"] = cinema["city_id"]
+    state["city_name"] = cinema["city_name"]
+    state["cinemas"] = [c for c in all_cinemas if c["city_id"] == cinema["city_id"]]
+    state["cinema_id"] = cinema["cinema_id"]
+    state["cinema_name"] = cinema["cinema_name"]
+    await _proceed_after_cinema(phone, state)
 
 
 async def _proceed_after_city(phone: str, state: dict, city: dict) -> None:
