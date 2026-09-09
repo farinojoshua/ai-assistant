@@ -351,26 +351,11 @@ async def _proceed_after_cinema(phone: str, state: dict) -> None:
 _DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
 
 
-def _parse_date(text: str) -> date | None:
-    """Strict: the whole message must be a date phrase — for a direct
-    reply to "tanggal berapa?"."""
-    t = text.strip().lower()
-    today = datetime.now(_TZ).date()
-    if t in ("hari ini", "sekarang", "today"):
-        return today
-    if t in ("besok", "tomorrow"):
-        return today + timedelta(days=1)
-    if t in ("lusa",):
-        return today + timedelta(days=2)
-    try:
-        return date.fromisoformat(t)
-    except ValueError:
-        return None
-
-
 def _parse_date_anywhere(text: str) -> date | None:
-    """Loose: a date phrase mentioned anywhere in free text — for picking up
-    "mau nonton hari ini" from the message that kicked the flow off."""
+    """A date phrase anywhere in free text — "mau nonton hari ini" from the
+    seed message, but also a direct reply like "hari ini deh boleh" (same
+    filler-word problem as the movie/showtime/seat steps, fixed the same
+    way: don't require the whole message to be exactly the phrase)."""
     t = text.strip().lower()
     today = datetime.now(_TZ).date()
     if "hari ini" in t or "sekarang" in t:
@@ -389,7 +374,7 @@ def _parse_date_anywhere(text: str) -> date | None:
 
 
 async def _step_date(phone: str, text: str, state: dict) -> None:
-    d = _parse_date(text)
+    d = _parse_date_anywhere(text)
     if d is None:
         await send_text("Format tanggal gak dikenali. Contoh: 'besok' atau '2026-09-10'.", to=phone)
         return
