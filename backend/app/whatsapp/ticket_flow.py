@@ -181,6 +181,8 @@ async def handle_text(phone: str, text: str, *, user: User) -> None:
         await _step_cinema(phone, text, state)
     elif step == "date":
         await _step_date(phone, text, state)
+    elif step == "movie":
+        await _step_movie(phone, text, state)
     elif step == "showtime":
         await _step_showtime(phone, text, state)
     elif step == "seats":
@@ -319,14 +321,58 @@ async def _fetch_and_show_showtimes(phone: str, state: dict, d: date) -> None:
 
     state["date"] = d.isoformat()
     state["showtimes"] = showtimes
+
+    # group into distinct movies first — a flat list of every single
+    # timeslot (same title repeated per showing) is hard to scan once a
+    # cinema has 10+ showings a day.
+    movies: list[dict] = []
+    seen = set()
+    for s in showtimes:
+        if s["movie_name"] in seen:
+            continue
+        seen.add(s["movie_name"])
+        movies.append(s)
+    state["movies_today"] = movies
+
+    if len(movies) == 1:
+        _select_movie(state, movies[0]["movie_name"])
+        await _show_showtime_choices(phone, state)
+        return
+
+    state["step"] = "movie"
+    lines = [
+        f"{i+1}. {m['movie_name']} (rating {m.get('rating_name', '-')})"
+        for i, m in enumerate(movies)
+    ]
+    await send_text("Film apa saja hari ini:\n" + "\n".join(lines) + "\n\nPilih nomor filmnya:", to=phone)
+
+
+def _select_movie(state: dict, movie_name: str) -> None:
+    state["selected_movie"] = movie_name
+    state["showtimes_for_movie"] = [
+        s for s in state["showtimes"] if s["movie_name"] == movie_name
+    ]
+
+
+async def _show_showtime_choices(phone: str, state: dict) -> None:
     state["step"] = "showtime"
     lines = []
-    for i, s in enumerate(showtimes):
+    for i, s in enumerate(state["showtimes_for_movie"]):
         jam = (s.get("showtime_start") or "")[-8:-3]
-        lines.append(
-            f"{i+1}. {s['movie_name']} — {jam} ({s.get('studio_name', '-')}) — {_rp(s['showtime_price'])}"
-        )
-    await send_text("Pilih jadwalnya:\n" + "\n".join(lines), to=phone)
+        lines.append(f"{i+1}. {jam} — {s.get('studio_name', '-')} — {_rp(s['showtime_price'])}")
+    await send_text(
+        f"Jadwal *{state['selected_movie']}*:\n" + "\n".join(lines) + "\n\nPilih nomor jamnya:",
+        to=phone,
+    )
+
+
+async def _step_movie(phone: str, text: str, state: dict) -> None:
+    movie = _match(text, state["movies_today"], "movie_name")
+    if movie is None:
+        await send_text("Film tidak ditemukan. Coba ketik ulang nama/nomor filmnya, atau 'batal'.", to=phone)
+        return
+    _select_movie(state, movie["movie_name"])
+    await _show_showtime_choices(phone, state)
 
 
 async def _step_showtime(phone: str, text: str, state: dict) -> None:
@@ -334,8 +380,8 @@ async def _step_showtime(phone: str, text: str, state: dict) -> None:
     showtime = None
     if t.isdigit():
         idx = int(t) - 1
-        if 0 <= idx < len(state["showtimes"]):
-            showtime = state["showtimes"][idx]
+        if 0 <= idx < len(state["showtimes_for_movie"]):
+            showtime = state["showtimes_for_movie"][idx]
     if showtime is None:
         await send_text("Nomor jadwal gak ditemukan. Coba ketik ulang, atau 'batal'.", to=phone)
         return
