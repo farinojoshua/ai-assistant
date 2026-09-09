@@ -151,8 +151,9 @@ def _remember_date_hint(state: dict, text: str) -> None:
 
 
 def _match(text: str, options: list[dict], name_key: str) -> dict | None:
-    """A direct reply to a "pick one" prompt — a number, or the option's
-    name (possibly a fragment of it)."""
+    """A direct reply to a "pick one" prompt — a number, the option's name
+    (possibly a fragment of it, e.g. "suka" -> "Sukabumi"), or the name
+    wrapped in a fuller sentence (e.g. "di sukabumi" -> "Sukabumi")."""
     t = text.strip().lower()
     if t.isdigit():
         idx = int(t) - 1
@@ -162,7 +163,11 @@ def _match(text: str, options: list[dict], name_key: str) -> dict | None:
     for o in options:
         if t == o[name_key].strip().lower():
             return o
-    matches = [o for o in options if t in o[name_key].strip().lower()]
+    matches = [
+        o
+        for o in options
+        if t in o[name_key].strip().lower() or o[name_key].strip().lower() in t
+    ]
     return matches[0] if len(matches) == 1 else None
 
 
