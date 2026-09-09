@@ -92,6 +92,17 @@ async def _all_cinemas() -> list[dict]:
     return flat
 
 
+def _normalize(s: str) -> str:
+    """Lowercase, punctuation dropped, whitespace collapsed — a typed reply
+    naturally omits a title's punctuation ("Munafik: Melawan Iblis" ->
+    "munafik melawan iblis"), so compare on this instead of the raw string.
+    Collapsing whitespace matters: swapping ":" for " " next to the space
+    that already followed it would otherwise leave a double space that
+    fails to match normally single-spaced typed text."""
+    s = re.sub(r"[^\w\s]", " ", s.lower())
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def should_start(text: str) -> bool:
     t = text.strip().lower()
     if any(p in t for p in _TRIGGER_PHRASES):
@@ -102,7 +113,8 @@ def should_start(text: str) -> bool:
     if any(w in t for w in _DESIRE_WORDS):
         from app.tools.film_bioskop import recent_titles
 
-        return any(title.lower() in t for title in recent_titles())
+        norm_t = _normalize(t)
+        return any(_normalize(title) in norm_t for title in recent_titles())
     return False
 
 
@@ -194,11 +206,14 @@ def _match(text: str, options: list[dict], name_key: str) -> dict | None:
     (possibly a fragment of it, e.g. "suka" -> "Sukabumi"), or the name
     wrapped in a fuller sentence (e.g. "di sukabumi" -> "Sukabumi")."""
     t = text.strip().lower()
-    if t.isdigit():
-        idx = int(t) - 1
+    # leading number, not "the whole message is only digits" — "1 😎" or
+    # "2 tiket ya" should still pick option 1/2, not fail past this check
+    # entirely just because of what follows the digit.
+    m = re.match(r"^(\d+)\b", t)
+    if m:
+        idx = int(m.group(1)) - 1
         if 0 <= idx < len(options):
             return options[idx]
-        return None
     for o in options:
         if t == o[name_key].strip().lower():
             return o
@@ -229,6 +244,12 @@ def _find_in_text(text: str, options: list[dict], name_key: str) -> dict | None:
     kicked the flow off, not a direct one-word reply to a prompt."""
     t = text.strip().lower()
     matches = [o for o in options if o[name_key].strip().lower() in t]
+    if len(matches) == 1:
+        return matches[0]
+    # punctuation-insensitive fallback — "Munafik: Melawan Iblis" typed
+    # without the colon.
+    norm_t = _normalize(t)
+    matches = [o for o in options if _normalize(o[name_key]) in norm_t]
     return matches[0] if len(matches) == 1 else None
 
 
@@ -237,15 +258,25 @@ async def _cancel(phone: str) -> None:
     await send_text("Oke, pemesanan tiket dibatalkan.", to=phone)
 
 
+_CONFIRM_WORDS = ("kirim", "lanjut", "gas", "setuju")
+_PAY_WORDS = ("bayar", "lanjut", "gas")
+
+
 async def handle_text(phone: str, text: str, *, user: User) -> None:
     state = _pending.get(phone)
     if state is None:
         return
+    step = state["step"]
     if _is_cancel(text):
-        await _cancel(phone)
+        # a real hold exists once we're at the payment step (confirm_booking
+        # already ran) — dropping local state without telling SAMS would
+        # orphan it instead of actually releasing the seat.
+        if step == "payment":
+            await _void(phone, state)
+        else:
+            await _cancel(phone)
         return
 
-    step = state["step"]
     if step == "city":
         await _step_city(phone, text, state)
     elif step == "cinema":
@@ -259,7 +290,16 @@ async def handle_text(phone: str, text: str, *, user: User) -> None:
     elif step == "seats":
         await _step_seats(phone, text, state)
     else:
-        # confirm/payment steps are button-driven; stray text just gets a nudge
+        # confirm/payment are button-driven, but plenty of people type
+        # "kirim"/"bayar" instead of actually tapping — accept that too
+        # rather than just repeating the nudge every time.
+        t = text.strip().lower()
+        if step == "confirm" and any(w in t for w in _CONFIRM_WORDS):
+            await _confirm_booking(phone, state)
+            return
+        if step == "payment" and any(w in t for w in _PAY_WORDS):
+            await _confirm_payment(phone, state)
+            return
         await send_text(
             "Tekan salah satu tombol di atas ya, atau ketik 'batal' untuk membatalkan.",
             to=phone,
@@ -472,10 +512,11 @@ def _parse_time(text: str) -> str | None:
 
 
 async def _step_showtime(phone: str, text: str, state: dict) -> None:
-    t = text.strip()
+    t = text.strip().lower()
     showtime = None
-    if t.isdigit():
-        idx = int(t) - 1
+    m = re.match(r"^(\d+)\b", t)
+    if m:
+        idx = int(m.group(1)) - 1
         if 0 <= idx < len(state["showtimes_for_movie"]):
             showtime = state["showtimes_for_movie"][idx]
     if showtime is None:
