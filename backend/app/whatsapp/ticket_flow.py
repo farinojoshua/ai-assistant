@@ -555,11 +555,23 @@ async def _step_showtime(phone: str, text: str, state: dict) -> None:
 
 
 async def _step_seats(phone: str, text: str, state: dict) -> None:
-    codes = [c.strip().upper() for c in text.split(",") if c.strip()]
+    seat_map: dict[str, str] = state["seat_map"]
+    # "A3 deh boleh" — extract seat-code-shaped tokens rather than assuming
+    # the whole comma-separated chunk is exactly a code; restricted to the
+    # row letters that actually exist here so it can't false-match unrelated
+    # text.
+    row_letters = "".join(sorted({code[0] for code in seat_map}))
+    pattern = re.compile(rf"\b([{row_letters}])\s*-?\s*(\d{{1,2}})\b", re.IGNORECASE)
+    seen: set[str] = set()
+    codes: list[str] = []
+    for letter, num in pattern.findall(text):
+        code = f"{letter.upper()}{num}"
+        if code not in seen:
+            seen.add(code)
+            codes.append(code)
     if not codes:
         await send_text("Ketik kode kursinya, contoh: G14,G15", to=phone)
         return
-    seat_map: dict[str, str] = state["seat_map"]
     invalid = [c for c in codes if c not in seat_map]
     if invalid:
         await send_text(
