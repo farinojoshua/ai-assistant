@@ -43,6 +43,11 @@ _TRIGGER_PHRASES = (
     "mau nonton", "pengen nonton", "ingin nonton", "mau ke bioskop",
 )
 _CANCEL_WORDS = ("batal", "cancel", "gajadi", "ga jadi", "gak jadi", "tidak jadi", "nggak jadi", "stop")
+# Desire language for the "named a real, just-shown movie title" trigger —
+# the LLM kept mishandling this itself (e.g. "mau dong baby udon" got
+# answered as if about food), so it's caught here deterministically instead
+# of relying on prompt instructions alone. See film_bioskop.recent_titles().
+_DESIRE_WORDS = ("mau", "pesan", "pesen", "pengen", "ingin", "dong", "boleh")
 
 _pending: dict[str, dict[str, Any]] = {}
 
@@ -57,7 +62,16 @@ def _rp(n: float) -> str:
 
 def should_start(text: str) -> bool:
     t = text.strip().lower()
-    return any(p in t for p in _TRIGGER_PHRASES)
+    if any(p in t for p in _TRIGGER_PHRASES):
+        return True
+    # "mau dong baby udon" after film_bioskop just listed "Baby Udon" —
+    # named a real, recently-shown title + desire language, no trigger
+    # phrase needed.
+    if any(w in t for w in _DESIRE_WORDS):
+        from app.tools.film_bioskop import recent_titles
+
+        return any(title.lower() in t for title in recent_titles())
+    return False
 
 
 def is_active(phone: str) -> bool:
@@ -336,6 +350,14 @@ async def _fetch_and_show_showtimes(phone: str, state: dict, d: date) -> None:
 
     if len(movies) == 1:
         _select_movie(state, movies[0]["movie_name"])
+        await _show_showtime_choices(phone, state)
+        return
+
+    # named the movie up front too ("mau dong Baby Udon")? skip the movie
+    # question if it's actually showing here today.
+    seed_movie = _find_in_text(state.get("seed_text", ""), movies, "movie_name")
+    if seed_movie is not None:
+        _select_movie(state, seed_movie["movie_name"])
         await _show_showtime_choices(phone, state)
         return
 

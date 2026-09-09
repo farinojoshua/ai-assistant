@@ -7,6 +7,7 @@ chat agent can call on either channel.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,27 @@ from pydantic import BaseModel, Field
 from app.sams import client as sams
 from app.sams.client import SamsApiError
 from app.tools.base import Tool, ToolContext
+
+# Titles just shown to a user, so a follow-up like "mau dong baby udon" can
+# be recognized deterministically (as a booking intent for a real, just-
+# mentioned title) instead of relying on the LLM to notice on its own —
+# see app/whatsapp/ticket_flow.py's should_start(). Global, not per-user:
+# the movie catalog is the same for everyone, TTL just bounds staleness.
+_RECENT_TTL_S = 600
+_recent_titles: dict[str, float] = {}
+
+
+def _remember_titles(movies: list[dict]) -> None:
+    now = time.monotonic()
+    for m in movies:
+        title = m.get("movie_name")
+        if title:
+            _recent_titles[title] = now
+
+
+def recent_titles() -> list[str]:
+    now = time.monotonic()
+    return [t for t, seen_at in _recent_titles.items() if now - seen_at < _RECENT_TTL_S]
 
 
 class FilmBioskopArgs(BaseModel):
@@ -42,6 +64,7 @@ class FilmBioskop(Tool):
         except SamsApiError as e:
             return {"error": "gagal ambil data film", "hint": e.message}
 
+        _remember_titles(movies)
         return {
             "film": [
                 {
