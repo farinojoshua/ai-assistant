@@ -201,14 +201,26 @@ def _remember_date_hint(state: dict, text: str) -> None:
         state["date"] = d.isoformat()
 
 
+_QUANTITY_UNITS = (
+    "orang", "org", "tiket", "kursi", "karcis", "kali", "jam", "hari", "bulan", "tahun"
+)
+_SELECTION_NUMBER_RE = re.compile(
+    r"\b(\d+)\b(?!\s*(?:" + "|".join(_QUANTITY_UNITS) + r")\b)"
+)
+
+
 def _match(text: str, options: list[dict], name_key: str) -> dict | None:
     """A direct reply to a "pick one" prompt — a number, the option's name
     (possibly a fragment of it, e.g. "suka" -> "Sukabumi"), or the name
     wrapped in a fuller sentence (e.g. "di sukabumi" -> "Sukabumi")."""
     t = text.strip().lower()
     # a number ANYWHERE in the reply, not just leading — "Oke, pilih 1 deh"
-    # puts it mid-sentence, same as "1 😎"/"2 tiket ya" put junk after it.
-    m = re.search(r"\b(\d+)\b", t)
+    # puts it mid-sentence, same as "1 😎" puts junk after it. But NOT a
+    # number immediately followed by a quantity word ("2 orang") — that's
+    # a headcount, not a list pick, and was misread as "pick option 2"
+    # (turning "Gombong" into whatever city happened to be 2nd in the
+    # list) before this exclusion existed.
+    m = _SELECTION_NUMBER_RE.search(t)
     if m:
         idx = int(m.group(1)) - 1
         if 0 <= idx < len(options):
@@ -513,7 +525,7 @@ def _parse_time(text: str) -> str | None:
 async def _step_showtime(phone: str, text: str, state: dict) -> None:
     t = text.strip().lower()
     showtime = None
-    m = re.search(r"\b(\d+)\b", t)
+    m = _SELECTION_NUMBER_RE.search(t)
     if m:
         idx = int(m.group(1)) - 1
         if 0 <= idx < len(state["showtimes_for_movie"]):
