@@ -76,7 +76,12 @@ async def _next_persona_message(history: list[tuple[str, str]]) -> str:
     return (resp.text or "").strip().strip('"').strip()
 
 
-async def run_scenario(seed: str, max_turns: int) -> dict:
+async def run_scenario(seed: str, max_turns: int, on_update=None, delay_s: float = 0) -> dict:
+    """on_update(transcript, problems), called after every turn — lets a
+    live viewer (see live_chaos_server.py) stream the same run this batch
+    script uses, instead of duplicating the loop and losing the coherence
+    heuristics in the process (which is exactly what happened the first
+    time live_chaos_server.py was written)."""
     phone = f"628{random.randint(100000000, 999999999)}"
     user = _FakeUser()
     transcript: list[tuple[str, str]] = []
@@ -101,6 +106,10 @@ async def run_scenario(seed: str, max_turns: int) -> dict:
         for turn in range(max_turns):
             sent.clear()
             transcript.append(("User", user_msg))
+            if on_update:
+                await on_update(transcript, problems)
+            if delay_s:
+                await asyncio.sleep(delay_s)
 
             state_before = ticket_flow._pending.get(phone)
             step_before = state_before["step"] if state_before else None
@@ -158,6 +167,11 @@ async def run_scenario(seed: str, max_turns: int) -> dict:
                     f"({bot_reply!r}) — kemungkinan stuck loop."
                 )
             prev_bot_reply = bot_reply
+
+            if on_update:
+                await on_update(transcript, problems)
+            if delay_s:
+                await asyncio.sleep(delay_s)
 
             if not ticket_flow.is_active(phone):
                 break

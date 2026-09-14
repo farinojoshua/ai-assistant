@@ -1,10 +1,16 @@
 """Live, browser-watchable chaos-test run.
 
-Runs one scenario against the real ticket_flow (WA sends mocked/captured,
-not actually delivered), streaming each turn into an in-memory list with a
-short pause between turns so a page polling /state can render it appearing
-live, WhatsApp-bubble style — same idea as render_chaos_report.py's static
-screenshot, but running in front of you instead of after the fact.
+Runs scenarios against the real ticket_flow (WA sends mocked/captured, not
+actually delivered) using the exact same run_scenario() as
+chaos_test_ticket_flow.py — so the live viewer gets the same coherence
+heuristics as the batch script instead of a second, drifting copy of the
+loop (which is what the first version of this file did).
+
+Workflow: click "Mulai run baru" as many times as you want — each finished
+run is appended to an in-memory history (not overwritten). When ready to
+hand a batch off for fixing, click "Download" to get one JSON file with
+every accumulated run, then "Hapus" to clear the server-side history and
+start the next batch fresh.
 
 Dev-only tool. Run inside the backend container (needs its deps):
     python scripts/live_chaos_server.py
@@ -13,91 +19,23 @@ Then proxy 127.0.0.1:3101 to wherever you're watching from.
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import sys
-import traceback
-import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
-from chaos_test_ticket_flow import _next_persona_message, _SEEDS
+from chaos_test_ticket_flow import _SEEDS, run_scenario
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 
-from app.whatsapp import ticket_flow
-
 app = FastAPI()
 
-_state: dict = {"messages": [], "done": False, "running": False}
-
-
-class _FakeUser:
-    def __init__(self) -> None:
-        self.id = uuid.uuid4()
-        self.tenant_id = uuid.uuid4()
-
-
-async def _run_live(seed: str, max_turns: int, delay_s: float) -> None:
-    _state["messages"] = []
-    _state["done"] = False
-    _state["running"] = True
-
-    phone = f"628{random.randint(100000000, 999999999)}"
-    user = _FakeUser()
-    transcript: list[tuple[str, str]] = []
-    sent: list[str] = []
-
-    async def fake_send_text(msg, to=None):
-        sent.append(msg)
-
-    async def fake_send_buttons(msg, buttons, to=None):
-        labels = " / ".join(f"[{title}]" for _, title in buttons)
-        sent.append(f"{msg}\n(tombol: {labels})")
-
-    async def fake_send_image(image_bytes, caption, to=None):
-        sent.append(f"(gambar {len(image_bytes)} bytes) {caption}")
-
-    with patch("app.whatsapp.ticket_flow.send_text", fake_send_text), patch(
-        "app.whatsapp.ticket_flow.send_buttons", fake_send_buttons
-    ), patch("app.whatsapp.ticket_flow.send_image", fake_send_image):
-        user_msg = seed
-        for _turn in range(max_turns):
-            sent.clear()
-            transcript.append(("User", user_msg))
-            _state["messages"] = list(transcript)
-            await asyncio.sleep(delay_s)
-
-            try:
-                if ticket_flow.is_active(phone):
-                    await ticket_flow.handle_text(phone, user_msg, user=user)
-                elif ticket_flow.should_start(user_msg):
-                    await ticket_flow.start(phone, user_msg, user=user)
-                else:
-                    sent.append("(tidak masuk alur tiket sama sekali)")
-            except Exception:  # noqa: BLE001
-                transcript.append(("Bot", f"[CRASH]\n{traceback.format_exc()}"))
-                _state["messages"] = list(transcript)
-                break
-
-            bot_reply = "\n---\n".join(sent) if sent else "(TIDAK ADA BALASAN)"
-            transcript.append(("Bot", bot_reply))
-            _state["messages"] = list(transcript)
-            await asyncio.sleep(delay_s)
-
-            if not ticket_flow.is_active(phone):
-                break
-
-            user_msg = await _next_persona_message(transcript)
-            if not user_msg:
-                break
-
-        ticket_flow._pending.pop(phone, None)
-
-    _state["done"] = True
-    _state["running"] = False
+_state: dict = {"messages": [], "problems": [], "done": False, "running": False}
+_history: list[dict] = []
 
 
 @app.post("/api/start")
@@ -105,13 +43,47 @@ async def start(seed: str | None = None, max_turns: int = 18, delay: float = 1.2
     if _state["running"]:
         return JSONResponse({"error": "sudah ada run yang jalan"}, status_code=409)
     chosen = seed or random.choice(_SEEDS)
-    asyncio.create_task(_run_live(chosen, max_turns, delay))
+
+    _state["messages"] = []
+    _state["problems"] = []
+    _state["done"] = False
+    _state["running"] = True
+
+    async def on_update(transcript, problems):
+        _state["messages"] = list(transcript)
+        _state["problems"] = list(problems)
+
+    async def _run() -> None:
+        result = await run_scenario(chosen, max_turns, on_update=on_update, delay_s=delay)
+        result["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _history.append(result)
+        _state["done"] = True
+        _state["running"] = False
+
+    asyncio.create_task(_run())
     return {"started": True, "seed": chosen}
 
 
 @app.get("/api/state")
 async def state():
-    return _state
+    return {**_state, "history_count": len(_history)}
+
+
+@app.get("/api/download")
+async def download():
+    payload = json.dumps(_history, ensure_ascii=False, indent=2)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="chaos-results-{ts}.json"'},
+    )
+
+
+@app.post("/api/clear")
+async def clear():
+    _history.clear()
+    return {"cleared": True}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -123,7 +95,7 @@ async def index():
 <style>
 body { margin:0; background:#e5ddd5; font-family:-apple-system,"Segoe UI",sans-serif; }
 #bar { position:sticky; top:0; background:#075e54; color:#fff; padding:10px 14px;
-       display:flex; gap:8px; align-items:center; font-size:14px; }
+       display:flex; gap:8px; align-items:center; font-size:14px; flex-wrap:wrap; }
 #bar button { padding:6px 12px; border:none; border-radius:6px; cursor:pointer; }
 #feed { max-width:480px; margin:0 auto; padding:12px 0 40px; }
 .row { display:flex; margin:3px 12px; }
@@ -134,12 +106,17 @@ body { margin:0; background:#e5ddd5; font-family:-apple-system,"Segoe UI",sans-s
           box-shadow:0 1px 0.5px rgba(0,0,0,.13); }
 .row.user .bubble { background:#d9fdd3; border-top-right-radius:2px; }
 .row.bot .bubble { background:#fff; border-top-left-radius:2px; }
-#status { color:#cbe6e2; font-size:12px; margin-left:auto; }
+#status { color:#cbe6e2; font-size:12px; }
+#count { color:#fff; font-size:13px; margin-left:auto; background:#0a7a6c;
+         padding:4px 10px; border-radius:12px; }
 </style></head>
 <body>
 <div id="bar">
   <button onclick="start()">▶ Mulai run baru</button>
+  <button onclick="downloadHistory()">⬇ Download</button>
+  <button onclick="clearHistory()">🗑 Hapus</button>
   <span id="status">idle</span>
+  <span id="count">0 run tersimpan</span>
 </div>
 <div id="feed"></div>
 <script>
@@ -148,6 +125,23 @@ async function start() {
   shown = 0;
   document.getElementById('feed').innerHTML = '';
   await fetch('api/start', {method: 'POST'});
+}
+async function downloadHistory() {
+  const r = await fetch('api/download');
+  const blob = await r.blob();
+  const disposition = r.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="(.+)"/);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = match ? match[1] : 'chaos-results.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+async function clearHistory() {
+  if (!confirm('Hapus semua hasil run yang tersimpan di server?')) return;
+  await fetch('api/clear', {method: 'POST'});
+  poll();
 }
 function bubble(who, msg) {
   const row = document.createElement('div');
@@ -167,6 +161,7 @@ async function poll() {
   }
   shown = s.messages.length;
   document.getElementById('status').textContent = s.running ? 'sedang jalan...' : (s.done ? 'selesai' : 'idle');
+  document.getElementById('count').textContent = s.history_count + ' run tersimpan';
 }
 setInterval(poll, 800);
 poll();
