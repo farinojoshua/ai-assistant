@@ -36,6 +36,37 @@ _REIMB_BUTTONS = [
     ("reimb_cancel", "Batal"),
 ]
 
+_BARE_GREETINGS = {
+    "halo", "hallo", "hai", "hi", "hello", "helo", "woi", "permisi",
+    "assalamualaikum", "test", "tes", "pagi", "siang", "sore", "malam",
+    "selamat pagi", "selamat siang", "selamat sore", "selamat malam",
+}
+
+
+def _is_bare_greeting(text: str) -> bool:
+    """A message that's ONLY a greeting/ping — nothing else to act on.
+
+    Handled with a canned reply instead of routing to the LLM: the model
+    would occasionally decide a bare "halo" or "hai" was reason enough to
+    proactively call a tool and dump unrelated data (e.g. location
+    history) with zero prompting — found live, not hypothetical. LLM
+    tool-calling is non-deterministic for edge cases like this (same
+    lesson as the movie-title trigger elsewhere in this file), so a bare
+    greeting is short-circuited deterministically instead of hoping the
+    prompt keeps steering it away.
+    """
+    t = re.sub(r"[^\w\s]", "", text.strip().lower())
+    return t in _BARE_GREETINGS
+
+
+def _greeting_reply(text: str) -> str:
+    t = text.strip().lower()
+    for waktu in ("pagi", "siang", "sore", "malam"):
+        if waktu in t:
+            return f"Selamat {waktu}! Ada yang bisa saya bantu?"
+    return "Halo! Ada yang bisa saya bantu?"
+
+
 # Free-text ways out of the edit prompt — people type "gajadi deh", not a
 # button tap, when they change their mind mid-flow.
 _CANCEL_WORDS = (
@@ -359,6 +390,9 @@ async def handle_incoming_text(*, from_phone: str, text: str) -> None:
 
     if ticket_flow.is_active(phone):
         await ticket_flow.handle_text(phone, text, user=user)
+        return
+    if _is_bare_greeting(text):
+        await send_text(_greeting_reply(text), to=phone)
         return
     if ticket_flow.should_start(text):
         await ticket_flow.start(phone, text, user=user)

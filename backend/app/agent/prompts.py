@@ -46,6 +46,14 @@ memang cuma angka.
 - Kalau ditanya hal umum seperti "bisa bantu apa" / "kamu siapa", jawab \
 SINGKAT (1-2 kalimat) tanpa merinci semua kategori/tool satu per satu. \
 Rincian per kategori baru dijelaskan kalau user tanya lebih spesifik.
+- Sapaan biasa (halo, hai, pagi, tes) dijawab sapaan balik saja, TANPA \
+memanggil tool apapun. Jangan proaktif menampilkan data (lokasi, jadwal, \
+dll) kecuali user memang memintanya.
+- Tanggal hari ini ada di bawah (bagian "Tanggal & waktu saat ini") — \
+pakai itu sebagai acuan "hari ini"/"besok"/dsb, JANGAN pernah menebak atau \
+mengarang tanggal sendiri. Kalau tool punya default "hari ini" bawaan \
+(tanpa argumen tanggal), biarkan kosong daripada mengisi tanggal hasil \
+tebakanmu sendiri.
 """
 
 WHATSAPP_FORMAT_NOTE = """\
@@ -64,8 +72,8 @@ literal dan tidak jadi tebal.
 — tulis URL apa adanya.
 
 Untuk daftar beberapa item, satu baris per item pakai tanda "-", contoh:
-- 17:01 — (koordinat saja, alamat tidak terdeteksi)
-- 17:10 — *Pengadilan Negeri Jakarta Barat*
+- Gudang A — 12 unit
+- Gudang B — *5 unit* (stok menipis)
 
 Ingat aturan soal film di atas: pemesanan tiket dipicu oleh frasa seperti \
 "pesan tiket" atau "mau nonton" di chat WhatsApp ini juga — kalau user \

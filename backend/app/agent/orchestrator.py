@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import AsyncIterator
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +23,10 @@ from app.llm.base import (
 from app.tools import registry
 from app.tools.base import ToolContext
 from app.tools.schema import format_for_prompt
+
+_TZ = ZoneInfo("Asia/Jakarta")
+
+_HARI = ("Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu")
 
 
 async def _run_tool(
@@ -57,7 +63,13 @@ async def run_turn(
 ) -> AsyncIterator[Event]:
     settings = settings or get_settings()
     schema = await format_for_prompt(ctx.db)
-    system_content = f"{SYSTEM_PROMPT}\n\n{schema}"
+    now = datetime.now(_TZ)
+    tanggal_line = (
+        f"Tanggal & waktu saat ini: {_HARI[now.weekday()]}, "
+        f"{now.strftime('%Y-%m-%d %H:%M')} WIB — pakai ini sebagai satu-satunya "
+        "acuan untuk 'hari ini'/'besok'/'kemarin', jangan menebak sendiri."
+    )
+    system_content = f"{SYSTEM_PROMPT}\n\n{tanggal_line}\n\n{schema}"
     if channel == "whatsapp":
         system_content += WHATSAPP_FORMAT_NOTE
     messages: list[Message] = [
