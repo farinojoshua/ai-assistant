@@ -206,10 +206,9 @@ def _match(text: str, options: list[dict], name_key: str) -> dict | None:
     (possibly a fragment of it, e.g. "suka" -> "Sukabumi"), or the name
     wrapped in a fuller sentence (e.g. "di sukabumi" -> "Sukabumi")."""
     t = text.strip().lower()
-    # leading number, not "the whole message is only digits" — "1 😎" or
-    # "2 tiket ya" should still pick option 1/2, not fail past this check
-    # entirely just because of what follows the digit.
-    m = re.match(r"^(\d+)\b", t)
+    # a number ANYWHERE in the reply, not just leading — "Oke, pilih 1 deh"
+    # puts it mid-sentence, same as "1 😎"/"2 tiket ya" put junk after it.
+    m = re.search(r"\b(\d+)\b", t)
     if m:
         idx = int(m.group(1)) - 1
         if 0 <= idx < len(options):
@@ -514,7 +513,7 @@ def _parse_time(text: str) -> str | None:
 async def _step_showtime(phone: str, text: str, state: dict) -> None:
     t = text.strip().lower()
     showtime = None
-    m = re.match(r"^(\d+)\b", t)
+    m = re.search(r"\b(\d+)\b", t)
     if m:
         idx = int(m.group(1)) - 1
         if 0 <= idx < len(state["showtimes_for_movie"]):
