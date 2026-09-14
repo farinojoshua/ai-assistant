@@ -44,7 +44,9 @@ _TRIGGER_PHRASES = (
     "pesan tiket", "pesen tiket", "beli tiket", "booking tiket", "order tiket",
     "mau nonton", "pengen nonton", "ingin nonton", "mau ke bioskop",
 )
-_CANCEL_WORDS = ("batal", "cancel", "gajadi", "ga jadi", "gak jadi", "tidak jadi", "nggak jadi", "stop")
+_CANCEL_WORDS = (
+    "batal", "btl", "cancel", "gajadi", "ga jadi", "gak jadi", "tidak jadi", "nggak jadi", "stop",
+)
 # Desire language for the "named a real, just-shown movie title" trigger —
 # the LLM kept mishandling this itself (e.g. "mau dong baby udon" got
 # answered as if about food), so it's caught here deterministically instead
@@ -222,6 +224,13 @@ def _match(text: str, options: list[dict], name_key: str) -> dict | None:
     ]
     if len(whole) == 1:
         return whole[0]
+    if len(whole) > 1:
+        # "mau di Gombong deh, tapi temen bilang coba Solo aja" mentions
+        # both — a real person changing their mind mid-message means the
+        # LAST name they typed, not "ambiguous, ask again" (chaos-tested:
+        # the bot kept re-asking the city instead of just going with the
+        # final one, forcing the user to repeat themselves).
+        return max(whole, key=lambda o: t.rfind(o[name_key].strip().lower()))
     # "cibadak boleh" doesn't contain the full "sams cibadak" as a
     # substring either direction — fall back to word overlap so a
     # distinctive word from the name (skip short/common ones like "sams")
@@ -244,10 +253,16 @@ def _find_in_text(text: str, options: list[dict], name_key: str) -> dict | None:
     matches = [o for o in options if o[name_key].strip().lower() in t]
     if len(matches) == 1:
         return matches[0]
+    if len(matches) > 1:
+        # same "changed my mind mid-message" case as _match() — go with
+        # whichever name was typed last.
+        return max(matches, key=lambda o: t.rfind(o[name_key].strip().lower()))
     # punctuation-insensitive fallback — "Munafik: Melawan Iblis" typed
     # without the colon.
     norm_t = _normalize(t)
     matches = [o for o in options if _normalize(o[name_key]) in norm_t]
+    if len(matches) > 1:
+        return max(matches, key=lambda o: norm_t.rfind(_normalize(o[name_key])))
     return matches[0] if len(matches) == 1 else None
 
 
