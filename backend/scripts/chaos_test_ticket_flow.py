@@ -138,14 +138,17 @@ async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenarios", type=int, default=len(_SEEDS))
     ap.add_argument("--max-turns", type=int, default=20)
+    ap.add_argument("--json-out", type=str, default=None, help="dump results as JSON for the HTML renderer")
     args = ap.parse_args()
 
     seeds = (_SEEDS * ((args.scenarios // len(_SEEDS)) + 1))[: args.scenarios]
     all_problems: list[str] = []
+    all_results: list[dict] = []
 
     for i, seed in enumerate(seeds, 1):
         print(f"\n{'=' * 70}\nSKENARIO {i}/{len(seeds)} — seed: {seed!r}\n{'=' * 70}")
         result = await run_scenario(seed, args.max_turns)
+        all_results.append(result)
         for who, msg in result["transcript"]:
             print(f"\n[{who}] {msg}")
         if result["problems"]:
@@ -159,6 +162,13 @@ async def main() -> None:
     print(f"\n\n{'#' * 70}\nRINGKASAN: {len(all_problems)} masalah ditemukan di {len(seeds)} skenario\n{'#' * 70}")
     for p in all_problems:
         print(f"  - {p}")
+
+    if args.json_out:
+        import json
+
+        with open(args.json_out, "w", encoding="utf-8") as f:
+            json.dump(all_results, f, ensure_ascii=False, indent=2)
+        print(f"\n(hasil juga disimpan ke {args.json_out})")
 
 
 if __name__ == "__main__":
