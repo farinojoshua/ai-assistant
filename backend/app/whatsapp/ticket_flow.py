@@ -21,7 +21,7 @@ import logging
 import re
 import time
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -163,11 +163,8 @@ async def start(phone: str, text: str, *, user: User) -> None:
         "user_id": str(user.id),
         "tenant_id": str(user.tenant_id),
         "cities": options,
-        # remembered so later steps don't re-ask something already said
-        # up front, e.g. "mau nonton hari ini" — see _remember_date_hint
         "seed_text": text,
     }
-    _remember_date_hint(state, text)
     _pending[phone] = state
 
     # named the city up front too ("mau nonton di Sukabumi hari ini")? skip
@@ -189,16 +186,6 @@ async def start(phone: str, text: str, *, user: User) -> None:
         "🎬 Mau nonton di kota mana? Ketik nomor atau nama kotanya:\n" + "\n".join(lines),
         to=phone,
     )
-
-
-def _remember_date_hint(state: dict, text: str) -> None:
-    """If a date was already mentioned (e.g. "mau nonton hari ini"), stash it
-    so the date step is skipped later instead of asking again."""
-    if "date" in state:
-        return
-    d = _parse_date_anywhere(text)
-    if d is not None:
-        state["date"] = d.isoformat()
 
 
 _QUANTITY_UNITS = (
@@ -292,8 +279,6 @@ async def handle_text(phone: str, text: str, *, user: User) -> None:
         await _step_city(phone, text, state)
     elif step == "cinema":
         await _step_cinema(phone, text, state)
-    elif step == "date":
-        await _step_date(phone, text, state)
     elif step == "movie":
         await _step_movie(phone, text, state)
     elif step == "showtime":
@@ -387,49 +372,11 @@ async def _step_cinema(phone: str, text: str, state: dict) -> None:
 
 
 async def _proceed_after_cinema(phone: str, state: dict) -> None:
-    """Cinema is known — go straight to showtimes if a date was already
-    mentioned up front, otherwise ask for one."""
-    if "date" in state:
-        await _fetch_and_show_showtimes(phone, state, date.fromisoformat(state["date"]))
-        return
-    state["step"] = "date"
-    await send_text(
-        "Mau nonton tanggal berapa? Ketik 'hari ini', 'besok', atau format YYYY-MM-DD.",
-        to=phone,
-    )
-
-
-_DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
-
-
-def _parse_date_anywhere(text: str) -> date | None:
-    """A date phrase anywhere in free text — "mau nonton hari ini" from the
-    seed message, but also a direct reply like "hari ini deh boleh" (same
-    filler-word problem as the movie/showtime/seat steps, fixed the same
-    way: don't require the whole message to be exactly the phrase)."""
-    t = text.strip().lower()
+    """Cinema is known — go straight to today's showtimes. SAMS only ever
+    has a schedule for today (asking "tanggal berapa?" just produced empty
+    results for anything else), so there's nothing to ask here."""
     today = datetime.now(_TZ).date()
-    if "hari ini" in t or "sekarang" in t or re.search(r"\bhr ini\b", t):
-        return today
-    if re.search(r"\bbesok\b|\bbsk\b", t):
-        return today + timedelta(days=1)
-    if "lusa" in t:
-        return today + timedelta(days=2)
-    m = _DATE_RE.search(t)
-    if m:
-        try:
-            return date.fromisoformat(m.group(1))
-        except ValueError:
-            return None
-    return None
-
-
-async def _step_date(phone: str, text: str, state: dict) -> None:
-    d = _parse_date_anywhere(text)
-    if d is None:
-        await send_text("Format tanggal gak dikenali. Contoh: 'besok' atau '2026-09-10'.", to=phone)
-        return
-    await _fetch_and_show_showtimes(phone, state, d)
+    await _fetch_and_show_showtimes(phone, state, today)
 
 
 async def _fetch_and_show_showtimes(phone: str, state: dict, d: date) -> None:
@@ -438,12 +385,11 @@ async def _fetch_and_show_showtimes(phone: str, state: dict, d: date) -> None:
     except SamsApiError as e:
         if e.code.startswith("404"):
             await send_text(
-                f"Gak ada jadwal tayang di {state['cinema_name']} tanggal {d.isoformat()}. "
-                "Coba tanggal lain atau ketik 'batal'.",
+                f"Belum ada jadwal tayang hari ini di {state['cinema_name']}. "
+                "Coba bioskop lain atau ketik 'batal'.",
                 to=phone,
             )
-            state["step"] = "date"
-            state.pop("date", None)
+            state["step"] = "cinema"
             return
         await _fail(phone, e, "daftar jadwal")
         return
