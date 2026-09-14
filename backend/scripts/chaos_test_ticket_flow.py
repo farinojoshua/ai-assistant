@@ -97,9 +97,13 @@ async def run_scenario(seed: str, max_turns: int) -> dict:
         "app.whatsapp.ticket_flow.send_buttons", fake_send_buttons
     ), patch("app.whatsapp.ticket_flow.send_image", fake_send_image):
         user_msg = seed
+        prev_bot_reply: str | None = None
         for turn in range(max_turns):
             sent.clear()
             transcript.append(("User", user_msg))
+
+            state_before = ticket_flow._pending.get(phone)
+            step_before = state_before["step"] if state_before else None
 
             try:
                 if ticket_flow.is_active(phone):
@@ -120,6 +124,40 @@ async def run_scenario(seed: str, max_turns: int) -> dict:
             else:
                 bot_reply = "\n---\n".join(sent)
             transcript.append(("Bot", bot_reply))
+
+            # heuristics for "technically replied but didn't actually
+            # understand" — the auto-detector above only catches hard
+            # crashes/silence, which misses most real coherence bugs (see
+            # the "Oke, pilih 1 deh" case: a normal-looking reply, but the
+            # step never advanced because the input wasn't understood).
+            #
+            # Only flag a stuck step when the reply itself signals a
+            # PARSING failure — "no data for that date/cinema" is a
+            # legitimate, correct rejection (SAMS genuinely has no
+            # showtimes at most cinemas most days) and would otherwise
+            # drown out real bugs with false positives every time.
+            _PARSE_FAILURE_MARKERS = (
+                "tidak ditemukan", "gak ditemukan", "tidak dikenali", "gak dikenali",
+                "tidak dikenal", "tekan salah satu tombol",
+            )
+            state_after = ticket_flow._pending.get(phone)
+            step_after = state_after["step"] if state_after else None
+            if (
+                state_before
+                and state_after
+                and step_before == step_after
+                and any(m in bot_reply.lower() for m in _PARSE_FAILURE_MARKERS)
+            ):
+                problems.append(
+                    f"turn {turn}: step TIDAK MAJU ({step_before}) setelah user bilang "
+                    f"{user_msg!r} — kemungkinan bot gak paham input ini. Bot jawab: {bot_reply!r}"
+                )
+            if bot_reply == prev_bot_reply:
+                problems.append(
+                    f"turn {turn}: bot ngasih balasan PERSIS SAMA dua kali berturut-turut "
+                    f"({bot_reply!r}) — kemungkinan stuck loop."
+                )
+            prev_bot_reply = bot_reply
 
             if not ticket_flow.is_active(phone):
                 break

@@ -397,9 +397,9 @@ def _parse_date_anywhere(text: str) -> date | None:
     way: don't require the whole message to be exactly the phrase)."""
     t = text.strip().lower()
     today = datetime.now(_TZ).date()
-    if "hari ini" in t or "sekarang" in t:
+    if "hari ini" in t or "sekarang" in t or re.search(r"\bhr ini\b", t):
         return today
-    if "besok" in t:
+    if re.search(r"\bbesok\b|\bbsk\b", t):
         return today + timedelta(days=1)
     if "lusa" in t:
         return today + timedelta(days=2)

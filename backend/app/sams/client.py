@@ -79,8 +79,17 @@ async def _request(
         headers["Authorization"] = f"Bearer {await _get_access_token()}"
 
     url = f"{settings.sams_base_url}{path}"
-    async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.request(method, url, content=raw_body, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.request(method, url, content=raw_body, headers=headers)
+    except httpx.TransportError as e:
+        # network-level failure (timeout, connection refused/reset, DNS,
+        # ...) — a completely different exception family from httpx, not a
+        # SamsApiError, so every `except SamsApiError` in ticket_flow.py
+        # would otherwise miss it entirely and crash the caller with no
+        # reply to the user. Found by the chaos-test harness hitting a
+        # real ConnectTimeout against the live SAMS API mid-run.
+        raise SamsApiError("NETWORK_ERROR", f"gagal menghubungi SAMS: {e}") from e
 
     try:
         data = resp.json()
