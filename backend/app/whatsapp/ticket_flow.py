@@ -516,7 +516,7 @@ async def _step_showtime(phone: str, text: str, state: dict) -> None:
         m2 = re.search(r"\bjam\s*(\d{1,2})\b", t)
         if m2:
             hour = int(m2.group(1))
-            if hour < 12 and re.search(r"\bsore\b|\bmalam\b", t):
+            if hour < 12 and re.search(r"\bsore\b|\bmalam\b|\bmalem\b", t):
                 hour += 12
             matches = [
                 s
