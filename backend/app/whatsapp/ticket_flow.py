@@ -373,7 +373,9 @@ async def _proceed_after_city(phone: str, state: dict, city: dict) -> None:
 
     state["step"] = "cinema"
     lines = [f"{i+1}. {c['cinema_name']} — {c.get('cinema_address', '-')}" for i, c in enumerate(cinemas)]
-    await send_text("Pilih bioskopnya:\n" + "\n".join(lines), to=phone)
+    await send_text(
+        "Pilih bioskopnya (nomor atau nama bioskopnya juga boleh):\n" + "\n".join(lines), to=phone
+    )
 
 
 async def _step_cinema(phone: str, text: str, state: dict) -> None:
@@ -442,7 +444,10 @@ async def _fetch_and_show_showtimes(phone: str, state: dict, d: date) -> None:
         f"{i+1}. {m['movie_name']} (rating {m.get('rating_name', '-')})"
         for i, m in enumerate(movies)
     ]
-    await send_text("Film apa saja hari ini:\n" + "\n".join(lines) + "\n\nPilih nomor filmnya:", to=phone)
+    await send_text(
+        "Film apa saja hari ini:\n" + "\n".join(lines) + "\n\nMau nonton yang mana? (nomor atau judulnya juga boleh)",
+        to=phone,
+    )
 
 
 def _select_movie(state: dict, movie_name: str) -> None:
@@ -459,7 +464,7 @@ async def _show_showtime_choices(phone: str, state: dict) -> None:
         jam = (s.get("showtime_start") or "")[-8:-3]
         lines.append(f"{i+1}. {jam} — {s.get('studio_name', '-')} — {_rp(s['showtime_price'])}")
     await send_text(
-        f"Jadwal *{state['selected_movie']}*:\n" + "\n".join(lines) + "\n\nPilih nomor jamnya:",
+        f"Jadwal *{state['selected_movie']}*:\n" + "\n".join(lines) + "\n\nJam berapa? (nomor atau jamnya juga boleh, misalnya 18:30)",
         to=phone,
     )
 
