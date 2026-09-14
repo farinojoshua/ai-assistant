@@ -509,6 +509,27 @@ async def _step_showtime(phone: str, text: str, state: dict) -> None:
             if len(matches) == 1:
                 showtime = matches[0]
     if showtime is None:
+        # "jam 18 aja" — hour only, no minutes. Only usable when it's
+        # unambiguous (exactly one showing that hour); "jam 18" with both
+        # 18:00 and 18:55 showing needs the actual time, same as a
+        # not-found city needs a re-type rather than a guess.
+        m2 = re.search(r"\bjam\s*(\d{1,2})\b", t)
+        if m2:
+            hour = int(m2.group(1))
+            if hour < 12 and re.search(r"\bsore\b|\bmalam\b", t):
+                hour += 12
+            matches = [
+                s
+                for s in state["showtimes_for_movie"]
+                if (s.get("showtime_start") or "")[-8:-6] == f"{hour:02d}"
+            ]
+            if len(matches) == 1:
+                showtime = matches[0]
+            elif len(matches) > 1:
+                jams = ", ".join((s.get("showtime_start") or "")[-8:-3] for s in matches)
+                await send_text(f"Ada beberapa jadwal jam segitu: {jams}. Ketik jamnya lengkap ya.", to=phone)
+                return
+    if showtime is None:
         await send_text("Nomor jadwal gak ditemukan. Coba ketik ulang, atau 'batal'.", to=phone)
         return
 
