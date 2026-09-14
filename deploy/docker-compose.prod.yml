@@ -65,6 +65,9 @@ services:
     # the bundled-nginx alternative
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+      # temporary dev tool — live chaos-test viewer (scripts/live_chaos_server.py),
+      # safe to remove this line once no longer needed
+      - "127.0.0.1:3101:3101"
     depends_on:
       - app_db
       - company_db
