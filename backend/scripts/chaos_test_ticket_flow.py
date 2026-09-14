@@ -20,13 +20,41 @@ import logging
 import random
 import traceback
 import uuid
-from unittest.mock import patch
 
 from app.llm.base import Message
 from app.llm.registry import get_provider
 from app.whatsapp import ticket_flow
 
 logging.getLogger("app").setLevel(logging.CRITICAL)  # keep chaos-run output readable
+
+# Patched once, permanently, for this process's whole lifetime — not with
+# unittest.mock.patch's context-manager (which swaps ticket_flow.send_text
+# to ONE closure at a time). That breaks the moment two scenarios run
+# concurrently (live_chaos_server.py's grid mode): the second run_scenario's
+# `with patch(...)` block overwrites the module-level name mid-flight, so
+# the first run's replies start landing in the second run's buffer. Keying
+# captured output by `to=phone` instead — which every ticket_flow send call
+# already passes — makes concurrent scenarios safe with a single shared
+# patch installed up front.
+_sent_by_phone: dict[str, list[str]] = {}
+
+
+async def _fake_send_text(msg, to=None):
+    _sent_by_phone.setdefault(to, []).append(msg)
+
+
+async def _fake_send_buttons(msg, buttons, to=None):
+    labels = " / ".join(f"[{title}]" for _, title in buttons)
+    _sent_by_phone.setdefault(to, []).append(f"{msg}\n(tombol: {labels})")
+
+
+async def _fake_send_image(image_bytes, caption, to=None):
+    _sent_by_phone.setdefault(to, []).append(f"(gambar {len(image_bytes)} bytes) {caption}")
+
+
+ticket_flow.send_text = _fake_send_text
+ticket_flow.send_buttons = _fake_send_buttons
+ticket_flow.send_image = _fake_send_image
 
 _PERSONA_PROMPT = """\
 Kamu berperan sebagai ORANG AWAM (bukan orang IT) yang lagi chat WhatsApp \
@@ -86,25 +114,13 @@ async def run_scenario(seed: str, max_turns: int, on_update=None, delay_s: float
     user = _FakeUser()
     transcript: list[tuple[str, str]] = []
     problems: list[str] = []
-    sent: list[str] = []
+    _sent_by_phone[phone] = []
 
-    async def fake_send_text(msg, to=None):
-        sent.append(msg)
-
-    async def fake_send_buttons(msg, buttons, to=None):
-        labels = " / ".join(f"[{title}]" for _, title in buttons)
-        sent.append(f"{msg}\n(tombol: {labels})")
-
-    async def fake_send_image(image_bytes, caption, to=None):
-        sent.append(f"(gambar {len(image_bytes)} bytes) {caption}")
-
-    with patch("app.whatsapp.ticket_flow.send_text", fake_send_text), patch(
-        "app.whatsapp.ticket_flow.send_buttons", fake_send_buttons
-    ), patch("app.whatsapp.ticket_flow.send_image", fake_send_image):
-        user_msg = seed
-        prev_bot_reply: str | None = None
+    user_msg = seed
+    prev_bot_reply: str | None = None
+    try:
         for turn in range(max_turns):
-            sent.clear()
+            start_idx = len(_sent_by_phone[phone])
             transcript.append(("User", user_msg))
             if on_update:
                 await on_update(transcript, problems)
@@ -120,12 +136,14 @@ async def run_scenario(seed: str, max_turns: int, on_update=None, delay_s: float
                 elif ticket_flow.should_start(user_msg):
                     await ticket_flow.start(phone, user_msg, user=user)
                 else:
-                    sent.append("(tidak masuk alur tiket sama sekali)")
+                    _sent_by_phone[phone].append("(tidak masuk alur tiket sama sekali)")
             except Exception:  # noqa: BLE001 - this is exactly what we're hunting for
                 tb = traceback.format_exc()
                 problems.append(f"turn {turn}: UNCAUGHT EXCEPTION\n{tb}")
                 transcript.append(("Bot", f"[CRASH]\n{tb}"))
                 break
+
+            sent = _sent_by_phone[phone][start_idx:]
 
             if not sent:
                 problems.append(f"turn {turn}: bot gave NO reply at all (silent failure)")
@@ -180,8 +198,9 @@ async def run_scenario(seed: str, max_turns: int, on_update=None, delay_s: float
             if not user_msg:
                 problems.append(f"turn {turn}: persona LLM produced an empty message, stopping")
                 break
-
+    finally:
         ticket_flow._pending.pop(phone, None)
+        _sent_by_phone.pop(phone, None)
 
     return {"seed": seed, "transcript": transcript, "problems": problems}
 
